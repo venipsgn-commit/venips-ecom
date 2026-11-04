@@ -15,12 +15,13 @@
   async function loadCatalog() {
     if (!db) return false;
     try {
-      const [c, p, z, s] = await Promise.all([
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("délai dépassé")), 8000));
+      const [c, p, z, s] = await Promise.race([Promise.all([
         db.from("categories").select("*").order("position"),
         db.from("products").select("*").order("position").order("created_at"),
         db.from("delivery_zones").select("*").order("position"),
         db.from("shop_settings").select("*")
-      ]);
+      ]), timeout]);
       const err = c.error || p.error || z.error || s.error;
       if (err) throw err;
       CATEGORIES = c.data.map((x) => ({ id: x.id, name: x.name, icon: x.icon }));
