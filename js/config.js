@@ -4,14 +4,14 @@
    les zones de livraison, les modes de paiement, etc.
    ========================================================= */
 window.STORE = {
-  name: "Conakry Tech",
+  name: "Venips",
   tagline: "L'électronique de qualité, livrée chez vous à Conakry",
-  logoText: "CT",
+  logoText: "V",
 
   // Numéro WhatsApp qui reçoit les commandes (format international, sans + ni espaces)
   whatsapp: "224628880354",
   phoneDisplay: "+224 628 88 03 54",
-  email: "contact@conakrytech.com",
+  email: "contact@venips.com",
   address: "Conakry, République de Guinée",
   hours: "Lun – Sam : 8h00 – 20h00 · Dim : 10h00 – 18h00",
 

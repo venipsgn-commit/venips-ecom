@@ -1,4 +1,4 @@
-# Conakry Tech – Boutique e-commerce
+# Venips – Boutique e-commerce
 
 Site e-commerce d'électronique pour la Guinée (prix en GNF), commandes reçues sur WhatsApp.
 
@@ -8,7 +8,7 @@ Site e-commerce d'électronique pour la Guinée (prix en GNF), commandes reçues
 - Fiche produit : prix/promo, stock, caractéristiques, produits similaires, bouton WhatsApp
 - Panier (tiroir + page), quantités, codes promo, barre « livraison gratuite »
 - Commande : coordonnées, zones de livraison de Conakry avec frais, paiement à la livraison / Orange Money / MTN MoMo
-- La commande est envoyée sur WhatsApp avec un numéro (ex. `CT-261103-AB12`)
+- La commande est envoyée sur WhatsApp avec un numéro (ex. `VN-261103-AB12`)
 - Favoris, historique « Mes commandes », pages Livraison, FAQ, Contact, À propos, CGV
 - Responsive (mobile d'abord), bouton WhatsApp flottant, SEO de base
 

@@ -1,5 +1,5 @@
 /* =========================================================
-   Conakry Tech – application de la boutique
+   Venips – application de la boutique
    ========================================================= */
 (function () {
   "use strict";
@@ -482,7 +482,7 @@
     const t = totals(data.zone);
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    const id = `CT-${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const id = `VN-${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const pay = S.payments.find((m) => m.id === data.payment) || S.payments[0];
     const order = {
       id, date: now.toISOString(),
