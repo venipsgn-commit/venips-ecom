@@ -47,8 +47,16 @@
   };
   const authError = (e) => AUTH_ERRORS[e.message] || (/rate limit/i.test(e.message) ? "Trop de tentatives, réessayez dans quelques minutes." : e.message);
 
+  // Applique un instantané du catalogue (venant de la base ou du cache du navigateur)
+  function applyCatalog(snap) {
+    CATEGORIES = snap.categories;
+    PRODUCTS = snap.products;
+    S.deliveryZones = snap.zones;
+    S.freeDeliveryFrom = snap.freeFrom;
+  }
+
   async function loadCatalog() {
-    if (!db) return false;
+    if (!db) return null;
     try {
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("délai dépassé")), 8000));
       const [c, p, z, s] = await Promise.race([Promise.all([
@@ -60,20 +68,25 @@
       ]), timeout]);
       const err = c.error || p.error || z.error || s.error;
       if (err) throw err;
-      CATEGORIES = c.data.map((x) => ({ id: x.id, name: x.name, icon: x.icon }));
-      PRODUCTS = p.data.map((x) => ({
-        id: x.id, name: x.name, brand: x.brand, category: x.category_id,
-        price: Number(x.price), oldPrice: x.old_price ? Number(x.old_price) : null,
-        stock: x.stock, featured: x.featured, badge: x.badge, description: x.description,
-        specs: x.specs || {}, color: x.color, image: x.image_url, images: x.images || [], position: x.position, createdAt: x.created_at
-      }));
-      S.deliveryZones = z.data.map((x) => ({ id: x.id, name: x.name, fee: Number(x.fee), delay: x.delay, freeEligible: x.free_eligible }));
       const free = s.data.find((x) => x.key === "free_delivery_from");
-      if (free) S.freeDeliveryFrom = Number(free.value) || 0;
-      return true;
+      const snap = {
+        v: 1,
+        categories: c.data.map((x) => ({ id: x.id, name: x.name, icon: x.icon })),
+        products: p.data.map((x) => ({
+          id: x.id, name: x.name, brand: x.brand, category: x.category_id,
+          price: Number(x.price), oldPrice: x.old_price ? Number(x.old_price) : null,
+          stock: x.stock, featured: x.featured, badge: x.badge, description: x.description,
+          specs: x.specs || {}, color: x.color, image: x.image_url, images: x.images || [], position: x.position, createdAt: x.created_at
+        })),
+        zones: z.data.map((x) => ({ id: x.id, name: x.name, fee: Number(x.fee), delay: x.delay, freeEligible: x.free_eligible })),
+        freeFrom: free ? Number(free.value) || 0 : S.freeDeliveryFrom
+      };
+      applyCatalog(snap);
+      store.set("catalog", snap);
+      return snap;
     } catch (e) {
       console.warn("Base indisponible, catalogue de secours utilisé.", e);
-      return false;
+      return null;
     }
   }
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -1140,11 +1153,42 @@
     $("#footer-bottom").innerHTML = `<span>© ${new Date().getFullYear()} ${esc(S.name)}. Tous droits réservés.</span><span>${esc(S.hours)}</span>`;
   }
 
+  // Silhouettes animées affichées pendant le tout premier chargement
+  function skeletonHTML() {
+    const line = (w, h = 14, extra = "") => `<div class="skel" style="width:${w};height:${h}px;${extra}"></div>`;
+    const card = `<div class="card skel-card"><div class="skel" style="aspect-ratio:1/1;border-radius:0"></div><div class="card-body">${line("40%", 11)}${line("90%", 15)}${line("60%", 15)}${line("55%", 20)}${line("100%", 38, "border-radius:10px;margin-top:8px")}</div></div>`;
+    const path = currentPath();
+    if (path.startsWith("/produit")) {
+      return `<div class="container page-head">${line("260px", 12)}</div><div class="container product">
+        <div class="skel" style="aspect-ratio:1/1;border-radius:18px"></div>
+        <div style="display:grid;gap:14px;align-content:start">${line("25%", 12)}${line("85%", 30)}${line("45%", 34)}${line("35%", 14)}${line("100%", 70)}${line("100%", 46, "border-radius:10px")}${line("100%", 46, "border-radius:10px")}</div></div>`;
+    }
+    if (["/compte", "/commande", "/mes-commandes", "/panier"].includes(path)) {
+      return `<div class="container page-head">${line("200px", 30)}</div><div class="container cart-layout">
+        <div class="panel" style="display:grid;gap:14px">${line("40%", 20)}${line("100%", 44)}${line("100%", 44)}${line("100%", 44)}</div>
+        <div class="panel" style="display:grid;gap:12px;align-self:start">${line("60%", 20)}${line("100%", 14)}${line("100%", 14)}${line("100%", 46, "border-radius:10px")}</div></div>`;
+    }
+    const hero = path === "/" ? `<div class="hero"><div class="container hero-inner"><div style="display:grid;gap:16px">${line("80%", 44, "opacity:.25")}${line("60%", 44, "opacity:.25")}${line("70%", 16, "opacity:.25")}</div></div></div>` : `<div class="container page-head">${line("220px", 30)}</div>`;
+    return `${hero}<div class="container section"><div class="grid">${card.repeat(8)}</div></div>`;
+  }
+
   async function boot() {
-    app.innerHTML = `<div class="container" style="padding:80px 16px;text-align:center"><p class="hint">Chargement de la boutique…</p></div>`;
-    await Promise.all([loadCatalog(), loadAccount()]);
+    const hasTokens = /access_token|error_description|type=recovery/.test(location.hash);
+    const needsAccount = ["/compte", "/commande", "/mes-commandes"].includes(currentPath());
+    // 1. Affichage immédiat : dernier catalogue connu (s'il existe) + en-tête complet
+    const cached = store.get("catalog", null);
+    if (cached && cached.v === 1) applyCatalog(cached);
+    renderShell();
+    updateBadges();
+    renderCartDrawer();
+    let shown = false;
+    if (cached && !hasTokens && !needsAccount) { render(); shown = true; }
+    else app.innerHTML = skeletonHTML();
+
+    // 2. Mise à jour silencieuse depuis la base
+    const [fresh] = await Promise.all([loadCatalog(), loadAccount()]);
     // Retour d'un lien email (confirmation, mot de passe) : jetons dans l'adresse
-    if (/access_token|error_description|type=recovery/.test(location.hash)) {
+    if (hasTokens) {
       if (/type=recovery/.test(location.hash)) recoveryMode = true;
       if (/error_description/.test(location.hash)) setTimeout(() => toast("Lien expiré ou invalide : demandez-en un nouveau."), 300);
       history.replaceState(null, "", location.pathname + "#/compte");
@@ -1162,12 +1206,19 @@
         }, 0);
       });
     }
-    cart = cart.filter((l) => byId(l.id));
-    wish = wish.filter((id) => byId(id));
-    renderShell();
+    if (fresh || !db) {
+      cart = cart.filter((l) => byId(l.id));
+      wish = wish.filter((id) => byId(id));
+    }
+    const changed = !!fresh && JSON.stringify(fresh) !== JSON.stringify(cached);
+    if (changed) { renderShell(); renderCartDrawer(); }
     updateBadges();
-    renderCartDrawer();
-    render();
+    // 3. Ne redessiner que si nécessaire (pas de saut de page inutile)
+    if (!shown || changed) {
+      const y = window.scrollY;
+      render();
+      if (shown) window.scrollTo(0, y);
+    }
   }
   boot();
 })();

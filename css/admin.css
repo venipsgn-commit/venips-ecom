@@ -114,3 +114,14 @@ table.data input[type=text], table.data input[type=number], table.data select { 
   .stats { gap: 10px; }
   .stat strong { font-size: 19px; }
 }
+
+/* ---------- Chargement ---------- */
+.boot-screen { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 22px; background: var(--navy); color: #c7d2fe; font-size: 14px; }
+.boot-screen img { height: 64px; animation: boot-pulse 1.6s ease-in-out infinite; }
+.boot-screen p { margin: 0; }
+@keyframes boot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.18); border-top-color: var(--cyan); animation: spin .8s linear infinite; }
+.spinner.dark { width: 22px; height: 22px; border-color: #dfe3ee; border-top-color: var(--accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-block { display: flex; align-items: center; gap: 12px; color: var(--muted); padding: 40px 0; justify-content: center; }
+@media (prefers-reduced-motion: reduce) { .spinner, .boot-screen img { animation-duration: 2.5s; } }

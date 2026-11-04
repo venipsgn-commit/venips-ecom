@@ -142,7 +142,7 @@
           <button id="logout">🚪 Déconnexion</button>
           <div class="who">${esc(session.user.email)}</div>
         </nav>
-        <main class="main" id="main"><p class="hint">Chargement…</p></main>
+        <main class="main" id="main"><div class="loading-block"><div class="spinner dark" aria-hidden="true"></div><span>Chargement…</span></div></main>
       </div>`;
     $("#logout").addEventListener("click", async () => { await sb.auth.signOut(); });
     $("#alerts-btn").addEventListener("click", enableAlerts);
@@ -243,7 +243,7 @@
     const main = $("#main");
     if (!main) return;
     $$(".side a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#/${tab}`));
-    main.innerHTML = `<p class="hint">Chargement…</p>`;
+    main.innerHTML = `<div class="loading-block"><div class="spinner dark" aria-hidden="true"></div><span>Chargement…</span></div>`;
     updateNewCount();
     try {
       if (tab === "dashboard") await tabDashboard(main);

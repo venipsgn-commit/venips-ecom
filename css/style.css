@@ -366,3 +366,15 @@ main { min-height: 60vh; outline: none; }
 .admin-banner { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: var(--navy); color: #fff; border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px; }
 .admin-banner strong { display: block; font-size: 17px; }
 .admin-banner span { color: #c7d2fe; font-size: 14px; }
+
+/* ---------- Chargement professionnel ---------- */
+.skel { background: linear-gradient(90deg, #e9edf4 0%, #f6f8fb 40%, #e9edf4 80%); background-size: 300% 100%; border-radius: 8px; animation: skel-shine 1.3s ease-in-out infinite; }
+.hero .skel { background: linear-gradient(90deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.28) 40%, rgba(255,255,255,.12) 80%); background-size: 300% 100%; }
+.skel-card { pointer-events: none; }
+.skel-card .card-body { gap: 10px; }
+@keyframes skel-shine { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+#app > * { animation: page-in .25s ease-out; }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.card-media img, .product-media img, .thumbs img { animation: img-in .35s ease-out; }
+@keyframes img-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .skel, #app > *, .card-media img, .product-media img, .thumbs img { animation: none; } }
