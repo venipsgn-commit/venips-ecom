@@ -380,7 +380,10 @@
           <button class="btn btn-primary btn-sm" id="d-save">Enregistrer</button>
           <a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(waMsg)}">WhatsApp client</a>
         </div>
-        ${o.status !== "annulee" ? `<p class="hint" style="margin-top:8px">Passer en « Annulée » remet automatiquement les articles en stock.</p>` : ""}
+        ${o.gestion_vente_ids && o.gestion_vente_ids.length
+          ? `<p class="notice" style="margin-top:10px">✓ Vente enregistrée dans votre logiciel de gestion (vendeur « SITE WEB »).</p>`
+          : `<p class="hint" style="margin-top:8px">En passant en « Livrée », la vente est enregistrée automatiquement dans votre logiciel de gestion (vendeur « SITE WEB »).</p>`}
+        ${o.status !== "annulee" ? `<p class="hint" style="margin-top:4px">Passer en « Annulée » remet automatiquement les articles en stock${o.status === "livree" ? " et retire la vente du logiciel de gestion" : ""}.</p>` : ""}
       </div>
     </div></td>`;
     tr.after(row);
@@ -388,8 +391,9 @@
       const status = $("#d-status", row).value, admin_note = $("#d-note", row).value.trim() || null;
       const { data, error } = await sb.from("orders").update({ status, admin_note }).eq("id", o.id).select().single();
       if (error) return fail(error);
-      Object.assign(o, data);
-      toast(`Commande ${o.id} : ${STATUSES[status]}`);
+      const { data: fresh } = await sb.from("orders").select("*").eq("id", o.id).single();
+      Object.assign(o, fresh || data);
+      toast(`Commande ${o.id} : ${STATUSES[status]}${status === "livree" && o.gestion_vente_ids && o.gestion_vente_ids.length ? " — vente enregistrée dans le logiciel de gestion" : ""}`);
       drawOrders();
       updateNewCount();
     });
