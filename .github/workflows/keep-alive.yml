@@ -1,0 +1,14 @@
+# Empêche la mise en veille du projet Supabase gratuit (après 7 jours sans activité)
+name: Garder la base active
+on:
+  schedule:
+    - cron: "0 8 */2 * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Interroger la base
+        run: |
+          curl -fsS "https://qsymsxmuevhiefjzywqb.supabase.co/rest/v1/categories?select=id&limit=1" \
+            -H "apikey: sb_publishable_0rVuA_2p8zXasxOcdu4vVQ_HwWmmRrc" > /dev/null

@@ -5,8 +5,40 @@
   "use strict";
 
   const S = window.STORE;
-  const PRODUCTS = window.PRODUCTS;
-  const CATEGORIES = window.CATEGORIES;
+  // Catalogue de secours (js/products.js), remplacé par la base Supabase dès qu'elle répond
+  let PRODUCTS = window.PRODUCTS.map((p, i) => ({ ...p, position: i }));
+  let CATEGORIES = window.CATEGORIES;
+  const db = S.supabaseUrl && window.supabase
+    ? window.supabase.createClient(S.supabaseUrl, S.supabaseKey, { auth: { persistSession: false } })
+    : null;
+
+  async function loadCatalog() {
+    if (!db) return false;
+    try {
+      const [c, p, z, s] = await Promise.all([
+        db.from("categories").select("*").order("position"),
+        db.from("products").select("*").order("position").order("created_at"),
+        db.from("delivery_zones").select("*").order("position"),
+        db.from("shop_settings").select("*")
+      ]);
+      const err = c.error || p.error || z.error || s.error;
+      if (err) throw err;
+      CATEGORIES = c.data.map((x) => ({ id: x.id, name: x.name, icon: x.icon }));
+      PRODUCTS = p.data.map((x) => ({
+        id: x.id, name: x.name, brand: x.brand, category: x.category_id,
+        price: Number(x.price), oldPrice: x.old_price ? Number(x.old_price) : null,
+        stock: x.stock, featured: x.featured, badge: x.badge, description: x.description,
+        specs: x.specs || {}, color: x.color, image: x.image_url, position: x.position, createdAt: x.created_at
+      }));
+      S.deliveryZones = z.data.map((x) => ({ id: x.id, name: x.name, fee: Number(x.fee), delay: x.delay, freeEligible: x.free_eligible }));
+      const free = s.data.find((x) => x.key === "free_delivery_from");
+      if (free) S.freeDeliveryFrom = Number(free.value) || 0;
+      return true;
+    } catch (e) {
+      console.warn("Base indisponible, catalogue de secours utilisé.", e);
+      return false;
+    }
+  }
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const app = $("#app");
@@ -29,9 +61,10 @@
     }
   };
 
-  let cart = store.get("cart", []).filter((l) => byId(l.id));
-  let wish = store.get("wish", []).filter((id) => byId(id));
+  let cart = store.get("cart", []);
+  let wish = store.get("wish", []);
   let promo = store.get("promo", "");
+  let promoPct = store.get("promoPct", 0);
   let orders = store.get("orders", []);
 
   /* ---------- Illustrations produits (SVG) ---------- */
@@ -93,10 +126,11 @@
   function totals(zoneId) {
     const items = cart.map((l) => ({ ...l, p: byId(l.id) })).filter((l) => l.p);
     const subtotal = items.reduce((s, l) => s + l.p.price * l.qty, 0);
-    const pct = S.promoCodes[promo] || 0;
+    const pct = promo ? promoPct : 0;
     const reduction = Math.round((subtotal * pct) / 100);
     const zone = S.deliveryZones.find((z) => z.id === zoneId);
-    const free = S.freeDeliveryFrom > 0 && subtotal - reduction >= S.freeDeliveryFrom && zoneId !== "interieur";
+    const eligible = zone ? zone.freeEligible !== false && zone.id !== "interieur" : true;
+    const free = S.freeDeliveryFrom > 0 && subtotal - reduction >= S.freeDeliveryFrom && eligible;
     const delivery = zone ? (free ? 0 : zone.fee) : 0;
     const count = items.reduce((s, l) => s + l.qty, 0);
     return { items, subtotal, pct, reduction, zone, free, delivery, total: subtotal - reduction + delivery, count };
@@ -187,7 +221,7 @@
       <div class="card-body">
         <div class="card-brand">${esc(p.brand)}</div>
         <a href="#/produit/${p.id}" class="card-title">${esc(p.name)}</a>
-        <div class="stars">${stars(p.rating)}<small>(${p.reviews})</small></div>
+        ${p.rating ? `<div class="stars">${stars(p.rating)}<small>(${p.reviews})</small></div>` : ""}
         <div class="price"><strong>${money(p.price)}</strong>${p.oldPrice ? `<s>${money(p.oldPrice)}</s>` : ""}</div>
         <button class="btn btn-dark" data-add="${p.id}" ${p.stock <= 0 ? "disabled" : ""}>${p.stock <= 0 ? "Indisponible" : "Ajouter au panier"}</button>
       </div>
@@ -200,7 +234,8 @@
   function pageHome() {
     const featured = PRODUCTS.filter((p) => p.featured).slice(0, 8);
     const deals = PRODUCTS.filter((p) => discount(p) > 0).sort((a, b) => discount(b) - discount(a)).slice(0, 4);
-    const best = [...PRODUCTS].sort((a, b) => b.reviews - a.reviews).slice(0, 4);
+    const best = [...PRODUCTS].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.position - a.position).slice(0, 4);
+    const heroTiles = (featured.length >= 4 ? featured : PRODUCTS).slice(0, 4).map((p) => p.id);
     const tile = (id) => { const p = byId(id); return p ? `<a href="#/produit/${p.id}" class="tile">${productIcon(p)}<strong>${esc(p.name)}</strong><span>${money(p.price)}</span></a>` : ""; };
     document.title = `${S.name} – Smartphones, ordinateurs et électronique en Guinée`;
     return `
@@ -214,7 +249,7 @@
               <a href="${waLink(`Bonjour ${S.name}, j'ai une question sur vos produits.`)}" target="_blank" rel="noopener" class="btn btn-wa">Commander sur WhatsApp</a>
             </div>
           </div>
-          <div class="hero-visual">${tile("iphone-13-128")}${tile("macbook-air-m1")}${tile("jbl-flip-6")}${tile("kit-solaire-300")}</div>
+          <div class="hero-visual">${heroTiles.map(tile).join("")}</div>
         </div>
       </section>
       <div class="container">
@@ -247,7 +282,7 @@
       </div></section>
 
       <section class="section" style="padding-top:0"><div class="container">
-        <div class="section-head"><div><h2>Les plus populaires</h2><p>Les choix préférés de nos clients</p></div></div>
+        <div class="section-head"><div><h2>Nouveautés</h2><p>Les derniers arrivages</p></div></div>
         <div class="grid">${best.map(cardHTML).join("")}</div>
       </div></section>`;
   }
@@ -277,9 +312,8 @@
     const sorters = {
       "prix-asc": (a, b) => a.price - b.price,
       "prix-desc": (a, b) => b.price - a.price,
-      "note": (a, b) => b.rating - a.rating,
       "promo": (a, b) => discount(b) - discount(a),
-      "pertinence": (a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || b.reviews - a.reviews
+      "pertinence": (a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || a.position - b.position
     };
     list.sort(sorters[sort] || sorters.pertinence);
 
@@ -312,7 +346,6 @@
               <option value="pertinence" ${sort === "pertinence" ? "selected" : ""}>Trier : pertinence</option>
               <option value="prix-asc" ${sort === "prix-asc" ? "selected" : ""}>Prix croissant</option>
               <option value="prix-desc" ${sort === "prix-desc" ? "selected" : ""}>Prix décroissant</option>
-              <option value="note" ${sort === "note" ? "selected" : ""}>Mieux notés</option>
               <option value="promo" ${sort === "promo" ? "selected" : ""}>Plus grosses remises</option>
             </select>
           </div>
@@ -336,7 +369,7 @@
         <div class="product-info">
           <div class="card-brand">${esc(p.brand)}</div>
           <h1>${esc(p.name)}</h1>
-          <div class="stars">${stars(p.rating)}<small>${p.rating}/5 · ${p.reviews} avis</small></div>
+          ${p.rating ? `<div class="stars">${stars(p.rating)}<small>${p.rating}/5 · ${p.reviews} avis</small></div>` : ""}
           <div class="price" style="margin-top:12px"><strong>${money(p.price)}</strong>${p.oldPrice ? `<s>${money(p.oldPrice)}</s><span class="saving">-${off}% · Économisez ${money(p.oldPrice - p.price)}</span>` : ""}</div>
           ${stockHTML}
           <p>${esc(p.description)}</p>
@@ -462,7 +495,7 @@
     return lines.join("\n");
   }
 
-  function submitCheckout(form) {
+  async function submitCheckout(form) {
     const data = Object.fromEntries(new FormData(form));
     $$(".field", form).forEach((f) => { f.classList.remove("invalid"); const e = $(".err", f); if (e) e.textContent = ""; });
     const errors = {};
@@ -482,22 +515,50 @@
     const t = totals(data.zone);
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    const id = `VN-${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const pay = S.payments.find((m) => m.id === data.payment) || S.payments[0];
+    const customer = { name: data.name.trim(), phone: "+224 " + digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4"), email: (data.email || "").trim(), address: data.address.trim(), notes: (data.notes || "").trim() };
     const order = {
-      id, date: now.toISOString(),
+      id: `VN-${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      date: now.toISOString(),
       items: t.items.map((l) => ({ id: l.p.id, name: l.p.name, price: l.p.price, qty: l.qty })),
       subtotal: t.subtotal, reduction: t.reduction, promo, delivery: t.delivery, total: t.total,
-      zone: t.zone.name, payment: pay.name, paymentId: pay.id,
-      customer: { name: data.name.trim(), phone: "+224 " + digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4"), email: (data.email || "").trim(), address: data.address.trim(), notes: (data.notes || "").trim() }
+      zone: t.zone.name, payment: pay.name, paymentId: pay.id, customer
     };
+
+    // Ouvert tout de suite (dans le clic) pour ne pas être bloqué par le navigateur
+    const waWindow = window.open("", "_blank");
+    const button = $("button[type=submit]", form);
+    button.disabled = true;
+    button.textContent = "Envoi de la commande…";
+
+    let saved = null;
+    if (db) {
+      const { data: res, error } = await db.rpc("place_order", {
+        p_order: { items: order.items.map((i) => ({ id: i.id, qty: i.qty })), name: customer.name, phone: customer.phone, email: customer.email, address: customer.address, notes: customer.notes, zone: data.zone, payment: pay.name, promo }
+      });
+      if (error && error.code === "P0001") {
+        // Refus métier (stock insuffisant, produit retiré…) : on prévient le client
+        if (waWindow) waWindow.close();
+        button.disabled = false;
+        button.textContent = "✓ Confirmer et envoyer sur WhatsApp";
+        toast(error.message);
+        loadCatalog().then(() => { cart = cart.filter((l) => byId(l.id)); saveCart(); render(); });
+        return;
+      }
+      if (error) console.warn("Commande non enregistrée en base, envoi WhatsApp seulement.", error);
+      saved = res;
+    }
+    if (saved) Object.assign(order, { id: saved.id, items: saved.items, subtotal: saved.subtotal, reduction: saved.reduction, promo: saved.promo || "", delivery: saved.delivery, total: saved.total, zone: saved.zone });
+
     orders = [order, ...orders].slice(0, 50);
     store.set("orders", orders);
-    cart = []; promo = "";
-    store.set("promo", "");
+    cart = []; promo = ""; promoPct = 0;
+    store.set("promo", ""); store.set("promoPct", 0);
     saveCart();
-    window.open(waLink(orderMessage(order)), "_blank", "noopener");
-    location.hash = `#/merci/${id}`;
+    const link = waLink(orderMessage(order));
+    if (waWindow) waWindow.location.href = link; else window.open(link, "_blank", "noopener");
+    location.hash = `#/merci/${order.id}`;
+    if (saved) loadCatalog();
   }
 
   function pageThanks(id) {
@@ -673,10 +734,23 @@
     else if ("pinc" in d || "pdec" in d) { const i = $("#pqty"); i.value = Math.max(1, Math.min(Number(i.max), Number(i.value) + ("pinc" in d ? 1 : -1))); }
     else if (d.padd) addToCart(d.padd, Math.max(1, Number($("#pqty").value) || 1));
     else if (d.pbuy) { addToCart(d.pbuy, Math.max(1, Number($("#pqty").value) || 1)); location.hash = "#/commande"; }
-    else if ("promoRemove" in d) { promo = ""; store.set("promo", ""); refreshCartViews(); }
+    else if ("promoRemove" in d) { promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
     else if (el.id === "filter-toggle") $("#filters").classList.toggle("open");
     else if ("close" in d) closeDrawers();
   });
+
+  async function applyPromo(code) {
+    let pct = 0;
+    if (db) {
+      const { data, error } = await db.rpc("check_promo", { p_code: code });
+      pct = error ? S.promoCodes[code] || 0 : Number(data) || 0;
+    } else pct = S.promoCodes[code] || 0;
+    if (!pct) return toast("Code promo invalide");
+    promo = code; promoPct = pct;
+    store.set("promo", code); store.set("promoPct", pct);
+    toast(`Code ${code} appliqué : -${pct}%`);
+    refreshCartViews();
+  }
 
   function refreshCartViews() {
     const p = currentPath();
@@ -720,8 +794,7 @@
     } else if (f.matches("[data-promo-form]")) {
       e.preventDefault();
       const code = f.elements.code.value.trim().toUpperCase();
-      if (S.promoCodes[code]) { promo = code; store.set("promo", code); toast(`Code ${code} appliqué : -${S.promoCodes[code]}%`); refreshCartViews(); }
-      else toast("Code promo invalide");
+      applyPromo(code);
     } else if (f.id === "checkout") {
       e.preventDefault();
       submitCheckout(f);
@@ -766,8 +839,15 @@
     $("#footer-bottom").innerHTML = `<span>© ${new Date().getFullYear()} ${esc(S.name)}. Tous droits réservés.</span><span>${esc(S.hours)}</span>`;
   }
 
-  renderShell();
-  updateBadges();
-  renderCartDrawer();
-  render();
+  async function boot() {
+    app.innerHTML = `<div class="container" style="padding:80px 16px;text-align:center"><p class="hint">Chargement de la boutique…</p></div>`;
+    await loadCatalog();
+    cart = cart.filter((l) => byId(l.id));
+    wish = wish.filter((id) => byId(id));
+    renderShell();
+    updateBadges();
+    renderCartDrawer();
+    render();
+  }
+  boot();
 })();

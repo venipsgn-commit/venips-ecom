@@ -4,6 +4,10 @@
    les zones de livraison, les modes de paiement, etc.
    ========================================================= */
 window.STORE = {
+  // Base de données Supabase (clé publique : elle peut être visible, la sécurité est assurée par la base)
+  supabaseUrl: "https://qsymsxmuevhiefjzywqb.supabase.co",
+  supabaseKey: "sb_publishable_0rVuA_2p8zXasxOcdu4vVQ_HwWmmRrc",
+
   name: "Venips",
   tagline: "L'électronique de qualité, livrée chez vous à Conakry",
   logoText: "V",
