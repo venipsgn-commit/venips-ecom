@@ -35,8 +35,8 @@
   let orders = store.get("orders", []);
 
   /* ---------- Illustrations produits (SVG) ---------- */
-  function icon(type, color = "#0b1b3a") {
-    const c = color, a = "#ff7a00";
+  function icon(type, color = "#0f014c") {
+    const c = color, a = "#00d1c7";
     const shapes = {
       phone: `<rect x="34" y="8" width="52" height="104" rx="10" fill="${c}"/><rect x="39" y="18" width="42" height="80" rx="3" fill="#dbeafe"/><rect x="39" y="18" width="42" height="80" rx="3" fill="url(#g)"/><circle cx="60" cy="105" r="3" fill="#94a3b8"/><rect x="52" y="12" width="16" height="2.5" rx="1.2" fill="#475569"/>`,
       laptop: `<rect x="18" y="20" width="84" height="56" rx="5" fill="${c}"/><rect x="23" y="25" width="74" height="46" rx="2" fill="url(#g)"/><path d="M8 80h104l-8 12H16z" fill="#94a3b8"/><rect x="50" y="82" width="20" height="3" rx="1.5" fill="#64748b"/>`,
@@ -49,7 +49,7 @@
       solar: `<g transform="rotate(-8 60 60)"><rect x="12" y="30" width="96" height="58" rx="4" fill="#1e3a8a"/><path d="M12 49h96M12 69h96M36 30v58M60 30v58M84 30v58" stroke="#93c5fd" stroke-width="1.5"/></g><circle cx="96" cy="20" r="12" fill="#facc15"/><rect x="56" y="88" width="8" height="22" fill="#64748b"/>`,
       gaming: `<path d="M30 46h60a20 20 0 0 1 19 26l-6 20a10 10 0 0 1-17 4L76 84H44L34 96a10 10 0 0 1-17-4l-6-20a20 20 0 0 1 19-26z" fill="${c}"/><path d="M34 64h16M42 56v16" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle cx="80" cy="60" r="4" fill="${a}"/><circle cx="88" cy="68" r="4" fill="#38bdf8"/>`
     };
-    return `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e40af"/><stop offset=".55" stop-color="#7c3aed"/><stop offset="1" stop-color="#ff7a00"/></linearGradient></defs>${shapes[type] || shapes.charger}</svg>`;
+    return `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c0b6e"/><stop offset=".55" stop-color="#0b9b93"/><stop offset="1" stop-color="#00f9ed"/></linearGradient></defs>${shapes[type] || shapes.charger}</svg>`;
   }
   const productIcon = (p) => {
     const cat = CATEGORIES.find((c) => c.id === p.category);
@@ -743,7 +743,9 @@
   /* ---------- Gabarit (header, footer) ---------- */
   function renderShell() {
     const [first, ...rest] = S.name.split(" ");
-    const logo = `<span class="logo-mark">${esc(S.logoText)}</span><span>${esc(first)}${rest.length ? ` <span class="accent">${esc(rest.join(" "))}</span>` : ""}</span>`;
+    const logo = S.logoImage
+      ? `<img class="logo-img" src="${esc(S.logoImage)}" alt="${esc(S.name)}">`
+      : `<span class="logo-mark">${esc(S.logoText)}</span><span>${esc(first)}${rest.length ? ` <span class="accent">${esc(rest.join(" "))}</span>` : ""}</span>`;
     $("#logo").innerHTML = logo;
     $("#topbar-phone").textContent = `📞 ${S.phoneDisplay} · ${S.hours.split("·")[0].trim()}`;
     $("#catnav").innerHTML = `<div class="catnav-inner"><a href="#/boutique">Tout</a><a href="#/boutique?promo=1">🔥 Promos</a>${CATEGORIES.map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}</div>`;

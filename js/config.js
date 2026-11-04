@@ -7,6 +7,7 @@ window.STORE = {
   name: "Venips",
   tagline: "L'électronique de qualité, livrée chez vous à Conakry",
   logoText: "V",
+  logoImage: "images/logo.jpg", // mettre "" pour afficher le logo texte
 
   // Numéro WhatsApp qui reçoit les commandes (format international, sans + ni espaces)
   whatsapp: "224628880354",
