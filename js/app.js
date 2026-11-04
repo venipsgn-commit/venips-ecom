@@ -56,7 +56,7 @@
         id: x.id, name: x.name, brand: x.brand, category: x.category_id,
         price: Number(x.price), oldPrice: x.old_price ? Number(x.old_price) : null,
         stock: x.stock, featured: x.featured, badge: x.badge, description: x.description,
-        specs: x.specs || {}, color: x.color, image: x.image_url, position: x.position, createdAt: x.created_at
+        specs: x.specs || {}, color: x.color, image: x.image_url, images: x.images || [], position: x.position, createdAt: x.created_at
       }));
       S.deliveryZones = z.data.map((x) => ({ id: x.id, name: x.name, fee: Number(x.fee), delay: x.delay, freeEligible: x.free_eligible }));
       const free = s.data.find((x) => x.key === "free_delivery_from");
@@ -118,7 +118,7 @@
     if (p.category === "audio" && /enceinte|speaker/i.test(p.name)) t = "speaker";
     return icon(t, p.color);
   };
-  const media = (p) => (p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">` : productIcon(p));
+  const media = (p) => (p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : productIcon(p));
 
   /* ---------- Panier / favoris ---------- */
   function saveCart() { store.set("cart", cart); updateBadges(); renderCartDrawer(); }
@@ -395,7 +395,10 @@
     return `
       <div class="container page-head">${crumbs([["Boutique", "#/boutique"], [catName(p.category), `#/boutique?cat=${p.category}`], [p.name]])}</div>
       <div class="container product">
-        <div class="product-media">${media(p)}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}</div>
+        <div>
+          <div class="product-media" id="main-media">${media(p)}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}</div>
+          ${p.image && p.images && p.images.length ? `<div class="thumbs">${[p.image, ...p.images].map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-img="${esc(u)}" aria-label="Image ${i + 1}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.thumb').remove()"></button>`).join("")}</div>` : ""}
+        </div>
         <div class="product-info">
           <div class="card-brand">${esc(p.brand)}</div>
           <h1>${esc(p.name)}</h1>
@@ -898,7 +901,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) addToCart(d.add);
@@ -910,6 +913,11 @@
     else if (d.padd) addToCart(d.padd, Math.max(1, Number($("#pqty").value) || 1));
     else if (d.pbuy) { addToCart(d.pbuy, Math.max(1, Number($("#pqty").value) || 1)); location.hash = "#/commande"; }
     else if ("promoRemove" in d) { promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
+    else if (d.img) {
+      const img = $("#main-media img");
+      if (img) img.src = d.img;
+      $$(".thumbs .thumb").forEach((t) => t.classList.toggle("on", t === el));
+    }
     else if (el.id === "filter-toggle") $("#filters").classList.toggle("open");
     else if ("logout" in d) { db.auth.signOut().then(async () => { store.set("customer", {}); await loadAccount(); render(); toast("Vous êtes déconnecté(e)"); }); }
     else if ("forgot" in d) {

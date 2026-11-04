@@ -24,6 +24,8 @@ Tables : `categories`, `products`, `orders`, `delivery_zones`, `promo_codes`, `s
 - Les commandes passent par la fonction `place_order` : prix, promo, livraison et stock sont recalculés par le serveur.
 - Seuls les comptes listés dans `admins` peuvent modifier les données.
 - Photos produits : stockage `produits`.
+- **Synchronisation avec le logiciel de gestion** (table `records`) : un déclencheur met à jour le stock du site à chaque vente (stockApres), annulation ou modification de vente, réassort (qtyInitial), nouvel article (créé sur le site) ou article supprimé (masqué). Le prix de vente du site reste celui fixé dans /admin. Une erreur côté site ne bloque jamais le logiciel de gestion.
+- Images : plusieurs liens par produit (Google Images, Google Drive ou autre), ou envoi de photo.
 - Si la base ne répond pas, la boutique affiche le catalogue de secours `js/products.js` et les commandes partent quand même sur WhatsApp.
 - `.github/workflows/keep-alive.yml` interroge la base tous les 2 jours pour éviter la mise en veille du plan gratuit.
 

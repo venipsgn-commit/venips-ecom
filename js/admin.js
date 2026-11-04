@@ -338,11 +338,11 @@
     wrap.innerHTML = `<table class="data">
       <tr><th></th><th>Produit</th><th>Catégorie</th><th style="text-align:right">Prix</th><th>Stock</th><th>En ligne</th><th></th></tr>
       ${list.map((p) => `<tr data-id="${esc(p.id)}">
-        <td><div class="thumb-sm">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : "📦"}</div></td>
-        <td><b>${esc(p.name)}</b><br><small class="muted">${esc(p.brand)}${p.featured ? " · ⭐ vedette" : ""}${p.badge ? ` · ${esc(p.badge)}` : ""}</small></td>
+        <td><div class="thumb-sm">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "📦"}</div></td>
+        <td><b>${esc(p.name)}</b><br><small class="muted">${esc(p.brand)}${p.featured ? " · ⭐ vedette" : ""}${p.badge ? ` · ${esc(p.badge)}` : ""}${p.source_id ? " · 🔄 stock synchronisé" : ""}${p.images && p.images.length ? ` · 🖼️ ${p.images.length + 1} images` : ""}</small></td>
         <td>${esc(catName(p.category_id))}</td>
-        <td class="num">${money(p.price)}${p.old_price ? `<br><small class="muted"><s>${money(p.old_price)}</s></small>` : ""}</td>
-        <td style="width:110px"><input type="number" min="0" value="${p.stock}" data-stock class="${p.stock === 0 ? "stock-out" : p.stock <= 3 ? "stock-low" : ""}" aria-label="Stock"></td>
+        <td style="width:150px"><input type="number" min="0" step="1000" value="${p.price}" data-price aria-label="Prix de vente">${p.old_price ? `<small class="muted"><s>${money(p.old_price)}</s></small>` : ""}</td>
+        <td style="width:110px"><input type="number" min="0" value="${p.stock}" data-stock class="${p.stock === 0 ? "stock-out" : p.stock <= 3 ? "stock-low" : ""}" aria-label="Stock" title="${p.source_id ? "Mis à jour automatiquement par le logiciel de gestion" : ""}"></td>
         <td><label class="check"><input type="checkbox" data-active ${p.active ? "checked" : ""}></label></td>
         <td><div class="row-actions"><button class="btn btn-outline btn-sm" data-edit>Modifier</button><button class="btn btn-danger btn-sm" data-del>Supprimer</button></div></td>
       </tr>`).join("")}
@@ -357,6 +357,13 @@
         cache.products = cache.products.filter((x) => x.id !== p.id);
         toast("Produit supprimé");
         drawProducts();
+      });
+      $("[data-price]", tr).addEventListener("change", async (e) => {
+        const price = Math.max(0, parseInt(e.target.value, 10) || 0);
+        const { error } = await sb.from("products").update({ price }).eq("id", p.id);
+        if (error) { e.target.value = p.price; return fail(error); }
+        p.price = price;
+        toast(`Prix de « ${p.name} » : ${money(price)}`);
       });
       $("[data-stock]", tr).addEventListener("change", async (e) => {
         const stock = Math.max(0, parseInt(e.target.value, 10) || 0);
@@ -375,6 +382,23 @@
     });
   }
 
+  // Accepte un lien direct, un lien Google Images (imgres?imgurl=…) ou un lien de partage Google Drive
+  function normalizeImageUrl(raw) {
+    const u = String(raw || "").trim();
+    if (!u) return "";
+    let url;
+    try { url = new URL(u); } catch { return ""; }
+    if (!/^https?:$/.test(url.protocol)) return "";
+    const imgurl = url.searchParams.get("imgurl");
+    if (/(^|\.)google\.[a-z.]+$/.test(url.hostname) && imgurl) return normalizeImageUrl(imgurl);
+    const drive = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([\w-]{10,})/);
+    if (drive) return `https://lh3.googleusercontent.com/d/${drive[1]}=w1200`;
+    return url.href;
+  }
+  function imageLinks(text) {
+    return [...new Set(String(text).split(/[\s,]+/).map(normalizeImageUrl).filter(Boolean))].slice(0, 10);
+  }
+
   function specsToText(specs) { return Object.entries(specs || {}).map(([k, v]) => `${k} : ${v}`).join("\n"); }
   function textToSpecs(text) {
     const out = {};
@@ -388,20 +412,21 @@
   function productForm(p) {
     const isNew = !p;
     p = p || { id: "", name: "", brand: "", category_id: (cache.categories[0] || {}).id, price: "", old_price: "", stock: 1, featured: false, active: true, badge: "", description: "", specs: { Garantie: "12 mois" }, color: "#0f014c", image_url: "", position: cache.products.length + 1 };
-    let imageUrl = p.image_url || "";
+    const allImages = [p.image_url, ...(p.images || [])].filter(Boolean);
     const bg = document.createElement("div");
     bg.className = "modal-bg";
     bg.innerHTML = `
       <form class="modal" id="pf" novalidate>
         <div class="modal-head"><h2>${isNew ? "Nouveau produit" : "Modifier le produit"}</h2><button type="button" class="icon-btn" data-close aria-label="Fermer">✕</button></div>
         <div class="modal-body"><div class="form-grid">
-          <div class="field full"><label>Photo du produit</label>
-            <div class="img-pick"><div class="preview" id="pf-prev">${imageUrl ? `<img src="${esc(imageUrl)}" alt="">` : "📷"}</div>
-              <div style="display:grid;gap:8px;flex:1">
-                <input type="file" id="pf-file" accept="image/jpeg,image/png,image/webp">
-                <small class="hint">JPG, PNG ou WebP, 5 Mo maximum. Fond blanc conseillé.</small>
-                ${imageUrl ? `<button type="button" class="btn btn-outline btn-sm" id="pf-rmimg" style="justify-self:start">Retirer la photo</button>` : ""}
-              </div></div></div>
+          ${p.source_id ? `<div class="field full"><div class="notice">🔄 <b>Stock synchronisé</b> avec votre logiciel de gestion : il se met à jour tout seul à chaque vente, annulation ou réassort. Le <b>prix de vente du site</b> reste celui que vous fixez ici.</div></div>` : ""}
+          <div class="field full"><label for="pf-links">Images du produit <small class="hint">— collez un ou plusieurs liens (un par ligne). La première est l'image principale.</small></label>
+            <textarea id="pf-links" name="links" rows="3" placeholder="https://… (lien d'image Google, Google Drive ou autre site)">${esc(allImages.join("\n"))}</textarea>
+            <small class="hint">Google Images : clic droit sur l'image → « Copier l'adresse de l'image ». Google Drive : partagez le fichier en « Tous les utilisateurs disposant du lien », puis copiez le lien.</small>
+            <div class="img-pick" id="pf-gallery" style="flex-wrap:wrap;margin-top:6px"></div></div>
+          <div class="field full"><label for="pf-file">… ou envoyer une photo depuis l'ordinateur / le téléphone</label>
+            <input type="file" id="pf-file" accept="image/jpeg,image/png,image/webp">
+            <small class="hint">JPG, PNG ou WebP, 5 Mo maximum. Elle sera ajoutée en première position.</small></div>
           <div class="field full"><label for="pf-name">Nom du produit *</label><input id="pf-name" name="name" value="${esc(p.name)}" required></div>
           <div class="field"><label for="pf-brand">Marque</label><input id="pf-brand" name="brand" value="${esc(p.brand)}"></div>
           <div class="field"><label for="pf-cat">Catégorie *</label><select id="pf-cat" name="category_id">${cache.categories.map((c) => `<option value="${esc(c.id)}" ${c.id === p.category_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
@@ -422,14 +447,20 @@
     const close = () => bg.remove();
     $$("[data-close]", bg).forEach((b) => b.addEventListener("click", close));
     bg.addEventListener("click", (e) => { if (e.target === bg) close(); });
-    const rm = $("#pf-rmimg", bg);
-    if (rm) rm.addEventListener("click", () => { imageUrl = ""; $("#pf-prev", bg).innerHTML = "📷"; rm.remove(); });
+    const drawGallery = () => {
+      const file = $("#pf-file", bg).files[0];
+      const urls = [...(file ? [URL.createObjectURL(file)] : []), ...imageLinks($("#pf-links", bg).value)];
+      $("#pf-gallery", bg).innerHTML = urls.length
+        ? urls.map((u, i) => `<div class="preview" style="width:76px;height:76px" title="${i === 0 ? "Image principale" : ""}"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode('⚠️ lien invalide'))"></div>`).join("")
+        : `<span class="hint">Aucune image : une illustration sera affichée.</span>`;
+    };
+    $("#pf-links", bg).addEventListener("input", drawGallery);
     $("#pf-file", bg).addEventListener("change", (e) => {
       const f = e.target.files[0];
-      if (!f) return;
-      if (f.size > 5 * 1024 * 1024) { e.target.value = ""; return toast("Image trop lourde (5 Mo maximum)", true); }
-      $("#pf-prev", bg).innerHTML = `<img src="${URL.createObjectURL(f)}" alt="">`;
+      if (f && f.size > 5 * 1024 * 1024) { e.target.value = ""; toast("Image trop lourde (5 Mo maximum)", true); }
+      drawGallery();
     });
+    drawGallery();
 
     $("#pf", bg).addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -448,19 +479,22 @@
       btn.disabled = true;
       btn.textContent = "Enregistrement…";
       try {
+        const links = imageLinks(f.links.value);
+        if (f.links.value.trim() && !links.length) throw new Error("Lien d'image invalide (il doit commencer par https://)");
         const file = $("#pf-file", bg).files[0];
         if (file) {
           const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
           const path = `${id}-${Date.now()}.${ext}`;
           const up = await sb.storage.from("produits").upload(path, file, { contentType: file.type, cacheControl: "31536000" });
           if (up.error) throw up.error;
-          imageUrl = sb.storage.from("produits").getPublicUrl(path).data.publicUrl;
+          links.unshift(sb.storage.from("produits").getPublicUrl(path).data.publicUrl);
         }
         const row = {
           id, name, brand: f.brand.value.trim(), category_id: f.category_id.value, price,
           old_price: oldPrice > price ? oldPrice : null, stock, badge: f.badge.value.trim() || null,
           description: f.description.value.trim(), specs: textToSpecs(f.specs.value), position: parseInt(f.position.value, 10) || 0,
-          color: f.color.value, featured: f.featured.checked, active: f.active.checked, image_url: imageUrl || null
+          color: f.color.value, featured: f.featured.checked, active: f.active.checked, auto_hidden: false,
+          image_url: links[0] || null, images: links.slice(1)
         };
         const { data, error } = isNew
           ? await sb.from("products").insert(row).select().single()
