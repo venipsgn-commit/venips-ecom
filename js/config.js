@@ -16,7 +16,7 @@ window.STORE = {
   // Numéro WhatsApp qui reçoit les commandes (format international, sans + ni espaces)
   whatsapp: "224628880354",
   phoneDisplay: "+224 628 88 03 54",
-  email: "contact@venips.com",
+  email: "venips.gn@gmail.com",
   address: "Conakry, République de Guinée",
   hours: "Lun – Sam : 8h00 – 20h00 · Dim : 10h00 – 18h00",
 

@@ -409,7 +409,7 @@
       <div class="container product">
         <div>
           <div class="gallery ${gallery.length > 1 ? "has-thumbs" : ""}">
-            ${gallery.length > 1 ? `<div class="thumbs">${gallery.map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-img="${i}" aria-label="Voir l'image ${i + 1}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.thumb').remove()"></button>`).join("")}</div>` : ""}
+            ${gallery.length > 1 ? `<div class="thumbs">${gallery.map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-img="${i}" aria-label="Voir l'image ${i + 1}"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer" onerror="this.closest('.thumb').remove()"></button>`).join("")}</div>` : ""}
             <div class="product-media ${gallery.length ? "zoomable" : ""}" id="main-media" ${gallery.length ? "data-open-viewer" : ""}>${media(p)}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}${gallery.length ? `<span class="zoom-hint">🔍 Cliquez pour agrandir</span>` : ""}</div>
           </div>
         </div>

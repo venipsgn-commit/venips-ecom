@@ -137,6 +137,7 @@
           <div class="brand"><img src="${esc(S.logoImage || "images/logo.jpg")}" alt="${esc(S.name)}"><small>Admin</small></div>
           ${NAV.map(([id, ic, label]) => `<a href="#/${id}" class="${tab === id ? "active" : ""}">${ic} ${label}${id === "commandes" ? `<span class="pill-count" id="new-count" hidden></span>` : ""}</a>`).join("")}
           <div class="spacer"></div>
+          <button id="alerts-btn" title="Son et notification à chaque nouvelle commande">🔕 Activer les alertes</button>
           <a href="./" target="_blank" rel="noopener">🛍️ Voir la boutique</a>
           <button id="logout">🚪 Déconnexion</button>
           <div class="who">${esc(session.user.email)}</div>
@@ -144,8 +145,90 @@
         <main class="main" id="main"><p class="hint">Chargement…</p></main>
       </div>`;
     $("#logout").addEventListener("click", async () => { await sb.auth.signOut(); });
+    $("#alerts-btn").addEventListener("click", enableAlerts);
+    drawAlertsBtn();
+    startOrderWatch();
     renderTab();
   }
+
+  /* ---------- Alertes nouvelle commande ---------- */
+  let lastOrderId;          // dernière commande connue (undefined = pas encore lue)
+  let unseen = 0;
+  let watchTimer = null;
+  let audioCtx = null;
+  const baseTitle = document.title;
+  const alertsOn = () => { try { return localStorage.getItem("venips_alerts") === "1"; } catch { return false; } };
+
+  function drawAlertsBtn() {
+    const b = $("#alerts-btn");
+    if (b) b.textContent = alertsOn() ? "🔔 Alertes activées" : "🔕 Activer les alertes";
+  }
+
+  async function enableAlerts() {
+    const on = !alertsOn();
+    try { localStorage.setItem("venips_alerts", on ? "1" : "0"); } catch { /* stockage indisponible */ }
+    if (on) {
+      try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); await audioCtx.resume(); } catch { /* pas de son */ }
+      if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission();
+      beep();
+      toast(window.Notification && Notification.permission === "granted"
+        ? "Alertes activées : son + notification à chaque nouvelle commande"
+        : "Alertes activées (son). Autorisez les notifications du navigateur pour être prévenu aussi hors de l'onglet.");
+    } else toast("Alertes désactivées");
+    drawAlertsBtn();
+  }
+
+  function beep() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.18, 0.36].forEach((t, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = [880, 1108, 1320][i];
+        g.gain.setValueAtTime(0.0001, audioCtx.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + t + 0.16);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(audioCtx.currentTime + t);
+        o.stop(audioCtx.currentTime + t + 0.17);
+      });
+    } catch { /* pas de son */ }
+  }
+
+  async function checkNewOrders() {
+    const { data, error } = await sb.from("orders").select("id,customer_name,total,created_at").order("created_at", { ascending: false }).limit(10);
+    if (error || !data) return;
+    const latest = data[0] ? data[0].id : null;
+    if (lastOrderId === undefined) { lastOrderId = latest; return; }
+    if (latest && latest !== lastOrderId) {
+      const idx = data.findIndex((o) => o.id === lastOrderId);
+      const fresh = idx === -1 ? data : data.slice(0, idx);
+      lastOrderId = latest;
+      unseen += fresh.length;
+      document.title = `(${unseen}) Nouvelle commande – ${baseTitle}`;
+      const o = fresh[0];
+      toast(`🛒 Nouvelle commande ${o.id} – ${o.customer_name} – ${money(o.total)}`);
+      if (alertsOn()) {
+        beep();
+        if ("Notification" in window && Notification.permission === "granted") {
+          const n = new Notification(`🛒 Nouvelle commande ${S.name}`, { body: `${o.customer_name} – ${money(o.total)}`, tag: "venips-order", renotify: true });
+          n.onclick = () => { window.focus(); location.hash = "#/commandes"; n.close(); };
+        }
+      }
+      updateNewCount();
+      if ((tab === "dashboard" || tab === "commandes") && !$(".modal-bg") && !$(".order-detail")) renderTab();
+    }
+  }
+
+  function startOrderWatch() {
+    clearInterval(watchTimer);
+    checkNewOrders();
+    watchTimer = setInterval(checkNewOrders, 20000);
+  }
+
+  // Revenir sur l'onglet efface le compteur du titre
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && unseen) { unseen = 0; document.title = baseTitle; }
+  });
 
   function stopRefresh() { clearInterval(refreshTimer); refreshTimer = null; }
 
@@ -700,7 +783,7 @@
     // Pas d'appel Supabase directement dans ce rappel (recommandation de la librairie)
     setTimeout(() => {
       if (event === "PASSWORD_RECOVERY") return viewPasswordReset();
-      if (event === "SIGNED_OUT") { session = null; return viewAuth(); }
+      if (event === "SIGNED_OUT") { session = null; clearInterval(watchTimer); lastOrderId = undefined; return viewAuth(); }
       if (event === "SIGNED_IN" && (!session || session.user.id !== s.user.id)) start();
     }, 0);
   });
