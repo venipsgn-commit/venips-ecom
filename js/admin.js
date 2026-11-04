@@ -112,8 +112,9 @@
       root.innerHTML = `
         <div class="auth-wrap"><div class="auth-card">
           <div class="logo-box"><img src="${esc(S.logoImage || "images/logo.jpg")}" alt="${esc(S.name)}"></div>
-          <h1>Accès en attente</h1>
-          <div class="notice warn" style="margin:14px 0">Le compte <b>${esc(session.user.email)}</b> existe mais n'a pas encore les droits administrateur.<br><br>Identifiant à communiquer pour l'activation :<br><code style="word-break:break-all">${esc(session.user.id)}</code></div>
+          <h1>Compte client</h1>
+          <div class="notice warn" style="margin:14px 0"><b>${esc(session.user.email)}</b> est un compte client : il permet de commander et de suivre ses commandes sur la boutique, mais pas de gérer le site.<br><br>Si c'est votre compte personnel d'administration, communiquez cet identifiant pour l'activer :<br><code style="word-break:break-all">${esc(session.user.id)}</code></div>
+          <a href="./#/compte" class="btn btn-primary btn-block" style="margin-bottom:10px">Aller à mon compte client</a>
           <button class="btn btn-outline btn-block" id="logout">Se déconnecter</button>
         </div></div>`;
       $("#logout").addEventListener("click", () => sb.auth.signOut());
@@ -125,7 +126,7 @@
 
   /* ---------- Gabarit ---------- */
   const NAV = [
-    ["dashboard", "📊", "Tableau de bord"], ["commandes", "🧾", "Commandes"], ["produits", "📦", "Produits"],
+    ["dashboard", "📊", "Tableau de bord"], ["commandes", "🧾", "Commandes"], ["produits", "📦", "Produits"], ["clients", "👥", "Clients"],
     ["categories", "🗂️", "Catégories"], ["livraison", "🚚", "Livraison"], ["promos", "🏷️", "Codes promo"]
   ];
   function renderShell() {
@@ -165,6 +166,7 @@
       if (tab === "dashboard") await tabDashboard(main);
       else if (tab === "commandes") await tabOrders(main);
       else if (tab === "produits") await tabProducts(main);
+      else if (tab === "clients") await tabClients(main);
       else if (tab === "categories") await tabCrud(main, CRUD.categories);
       else if (tab === "livraison") await tabDelivery(main);
       else if (tab === "promos") await tabCrud(main, CRUD.promos);
@@ -281,7 +283,7 @@
       </div>
       <div>
         <h4>Client</h4>
-        <p><b>${esc(o.customer_name)}</b></p>
+        <p><b>${esc(o.customer_name)}</b> <small class="muted">${o.user_id ? "· compte client" : "· sans compte"}</small></p>
         <p>📞 <a class="link" href="tel:${esc(o.customer_phone.replace(/\s/g, ""))}">${esc(o.customer_phone)}</a></p>
         ${o.customer_email ? `<p>✉️ ${esc(o.customer_email)}</p>` : ""}
         <p>📍 ${esc(o.address)} (${esc(o.zone_name)})</p>
@@ -475,6 +477,52 @@
       }
     });
     $("#pf-name", bg).focus();
+  }
+
+  /* ---------- Clients ---------- */
+  async function tabClients(main) {
+    const [profiles, admins, orders] = await Promise.all([
+      sb.from("customer_profiles").select("*").order("created_at", { ascending: false }),
+      sb.from("admins").select("user_id"),
+      loadOrders(1000)
+    ]);
+    if (profiles.error) throw profiles.error;
+    const adminIds = new Set((admins.data || []).map((a) => a.user_id));
+    const stats = {};
+    orders.filter((o) => o.user_id && o.status !== "annulee").forEach((o) => {
+      const s = (stats[o.user_id] = stats[o.user_id] || { n: 0, total: 0, last: null });
+      s.n += 1; s.total += Number(o.total);
+      if (!s.last || o.created_at > s.last) s.last = o.created_at;
+    });
+    const customers = profiles.data.filter((p) => !adminIds.has(p.user_id));
+    const guests = orders.filter((o) => !o.user_id).length;
+    main.innerHTML = `
+      <div class="main-head"><h1>Clients</h1></div>
+      <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat"><small>Comptes clients</small><strong>${customers.length}</strong></div>
+        <div class="stat"><small>Commandes avec compte</small><strong>${orders.length - guests}</strong></div>
+        <div class="stat"><small>Commandes sans compte</small><strong>${guests}</strong></div>
+      </div>
+      <p class="hint" style="margin-top:0">Les comptes clients servent uniquement à commander et suivre ses commandes. Votre compte personnel (administrateur) n'apparaît pas dans cette liste.</p>
+      <div class="toolbar-admin"><input type="search" id="c-q" placeholder="Rechercher un nom, un téléphone, un email…"></div>
+      <div class="table-wrap" id="clients-table"></div>`;
+    const draw = () => {
+      const q = $("#c-q").value.trim().toLowerCase();
+      const list = customers.filter((p) => !q || `${p.full_name} ${p.phone} ${p.email}`.toLowerCase().includes(q));
+      $("#clients-table").innerHTML = list.length ? `<table class="data">
+        <tr><th>Client</th><th>Téléphone</th><th>Adresse</th><th>Inscrit le</th><th style="text-align:right">Commandes</th><th style="text-align:right">Total dépensé</th><th></th></tr>
+        ${list.map((p) => { const s = stats[p.user_id] || { n: 0, total: 0 }; const phone = (p.phone || "").replace(/\D/g, ""); return `<tr>
+          <td><b>${esc(p.full_name || "—")}</b><br><small class="muted">${esc(p.email)}</small></td>
+          <td>${esc(p.phone || "—")}</td>
+          <td>${esc(p.address || "—")}</td>
+          <td>${new Date(p.created_at).toLocaleDateString("fr-FR")}</td>
+          <td class="num">${s.n}</td><td class="num">${money(s.total)}</td>
+          <td>${phone ? `<a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${phone}">WhatsApp</a>` : ""}</td>
+        </tr>`; }).join("")}</table>`
+        : `<p class="hint" style="padding:20px">${q ? "Aucun client ne correspond." : "Aucun compte client pour le moment. Les clients peuvent s'inscrire depuis « Mon compte » sur la boutique."}</p>`;
+    };
+    $("#c-q").addEventListener("input", draw);
+    draw();
   }
 
   /* ---------- Tables simples (catégories, zones, promos) ---------- */

@@ -9,7 +9,7 @@ window.STORE = {
   supabaseKey: "sb_publishable_0rVuA_2p8zXasxOcdu4vVQ_HwWmmRrc",
 
   name: "Venips",
-  tagline: "L'électronique de qualité, livrée chez vous à Conakry",
+  tagline: "Ordinateurs portables et accessoires informatiques, livrés chez vous à Conakry",
   logoText: "V",
   logoImage: "images/logo.jpg", // mettre "" pour afficher le logo texte
 

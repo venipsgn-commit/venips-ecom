@@ -9,8 +9,35 @@
   let PRODUCTS = window.PRODUCTS.map((p, i) => ({ ...p, position: i }));
   let CATEGORIES = window.CATEGORIES;
   const db = S.supabaseUrl && window.supabase
-    ? window.supabase.createClient(S.supabaseUrl, S.supabaseKey, { auth: { persistSession: false } })
+    ? window.supabase.createClient(S.supabaseUrl, S.supabaseKey)
     : null;
+
+  /* ---------- Compte client ---------- */
+  let user = null;
+  let profile = null;
+  let recoveryMode = false;
+  const ORDER_STATUS = { nouvelle: "Reçue", confirmee: "Confirmée", en_livraison: "En livraison", livree: "Livrée", annulee: "Annulée" };
+
+  async function loadAccount() {
+    if (!db) return;
+    const { data } = await db.auth.getSession();
+    user = data.session ? data.session.user : null;
+    profile = null;
+    if (user) {
+      const { data: p } = await db.from("customer_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      profile = p;
+    }
+    const dot = document.getElementById("account-dot");
+    if (dot) dot.hidden = !user;
+  }
+
+  const AUTH_ERRORS = {
+    "Invalid login credentials": "Email ou mot de passe incorrect.",
+    "Email not confirmed": "Confirmez d'abord votre adresse : cliquez sur le lien reçu par email.",
+    "User already registered": "Un compte existe déjà avec cet email. Connectez-vous.",
+    "Password should be at least 8 characters": "Le mot de passe doit contenir au moins 8 caractères."
+  };
+  const authError = (e) => AUTH_ERRORS[e.message] || (/rate limit/i.test(e.message) ? "Trop de tentatives, réessayez dans quelques minutes." : e.message);
 
   async function loadCatalog() {
     if (!db) return false;
@@ -238,13 +265,13 @@
     const best = [...PRODUCTS].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.position - a.position).slice(0, 4);
     const heroTiles = (featured.length >= 4 ? featured : PRODUCTS).slice(0, 4).map((p) => p.id);
     const tile = (id) => { const p = byId(id); return p ? `<a href="#/produit/${p.id}" class="tile">${productIcon(p)}<strong>${esc(p.name)}</strong><span>${money(p.price)}</span></a>` : ""; };
-    document.title = `${S.name} – Smartphones, ordinateurs et électronique en Guinée`;
+    document.title = `${S.name} – Ordinateurs portables et accessoires à Conakry`;
     return `
       <section class="hero">
         <div class="container hero-inner">
           <div>
-            <h1>La technologie qu'il vous faut, <em>livrée à Conakry</em>.</h1>
-            <p>Smartphones, ordinateurs, TV, audio et kits solaires de marques reconnues. Produits garantis, prix justes, paiement à la livraison ou par Mobile Money.</p>
+            <h1>Votre ordinateur portable, <em>livré à Conakry</em>.</h1>
+            <p>Ordinateurs portables HP, Dell, Lenovo et accessoires informatiques. Prix justes, produits testés, paiement à la livraison ou par Mobile Money.</p>
             <div class="hero-actions">
               <a href="#/boutique" class="btn btn-primary">Voir la boutique</a>
               <a href="${waLink(`Bonjour ${S.name}, j'ai une question sur vos produits.`)}" target="_blank" rel="noopener" class="btn btn-wa">Commander sur WhatsApp</a>
@@ -273,14 +300,16 @@
       </div></section>
 
       <section class="section" style="padding-top:0"><div class="container banner">
-        <div class="b1"><h3>Jusqu'à -${Math.max(...PRODUCTS.map(discount))}% sur une sélection</h3><p>Smartphones, TV et accessoires à prix cassés. Stocks limités !</p><a href="#/boutique?promo=1" class="btn">Voir les promos</a></div>
-        <div class="b2"><h3>Fini les coupures ⚡</h3><p>Kits solaires et onduleurs pour la maison et la boutique.</p><a href="#/boutique?cat=energie" class="btn">Découvrir</a></div>
+        ${deals.length
+          ? `<div class="b1"><h3>Jusqu'à -${Math.max(...deals.map(discount))}% sur une sélection</h3><p>Des prix cassés sur une sélection de produits. Stocks limités !</p><a href="#/boutique?promo=1" class="btn">Voir les promos</a></div>`
+          : `<div class="b1"><h3>Ordinateurs portables professionnels 💻</h3><p>HP, Dell, Lenovo… des machines solides pour le travail et les études, testées avant livraison.</p><a href="#/boutique?cat=ordinateurs" class="btn">Voir les ordinateurs</a></div>`}
+        <div class="b2"><h3>Équipez votre poste de travail</h3><p>Souris, claviers, sacs, supports, disques et câbles pour votre PC.</p><a href="#/boutique?cat=accessoires" class="btn">Voir les accessoires</a></div>
       </div></section>
 
-      <section class="section" style="padding-top:0"><div class="container">
+      ${deals.length ? `<section class="section" style="padding-top:0"><div class="container">
         <div class="section-head"><div><h2>🔥 Meilleures offres</h2><p>Les plus grosses réductions du moment</p></div><a href="#/boutique?promo=1" class="link">Toutes les promos →</a></div>
         <div class="grid">${deals.map(cardHTML).join("")}</div>
-      </div></section>
+      </div></section>` : ""}
 
       <section class="section" style="padding-top:0"><div class="container">
         <div class="section-head"><div><h2>Nouveautés</h2><p>Les derniers arrivages</p></div></div>
@@ -435,7 +464,13 @@
   }
 
   function pageCheckout() {
-    const draft = store.get("customer", {});
+    const saved = store.get("customer", {});
+    const fromProfile = profile ? {
+      name: profile.full_name, phone: (profile.phone || "").replace(/^\+224\s?/, ""), email: user.email,
+      address: profile.address, zone: profile.zone_id || ""
+    } : {};
+    const draft = {};
+    ["name", "phone", "email", "address", "zone", "notes", "payment"].forEach((k) => { draft[k] = saved[k] || fromProfile[k] || ""; });
     const t = totals(draft.zone);
     document.title = `Commande – ${S.name}`;
     if (!t.items.length) { location.hash = "#/panier"; return ""; }
@@ -443,6 +478,9 @@
       <div class="container page-head">${crumbs([["Panier", "#/panier"], ["Commande"]])}<h1>Finaliser ma commande</h1></div>
       <form class="container cart-layout" id="checkout" novalidate>
         <div class="panel">
+          ${!db ? "" : user
+            ? `<div class="account-note">👤 Connecté(e) : <b>${esc(user.email)}</b> — cette commande sera ajoutée à votre compte.</div>`
+            : `<div class="account-note">Vous avez un compte ? <a href="#/compte" class="link">Connectez-vous</a> pour retrouver vos commandes. Vous pouvez aussi commander sans compte.</div>`}
           <h3 class="steps-title"><b>1</b> Vos coordonnées</h3>
           <div class="form-grid">
             <div class="field"><label for="f-name">Nom complet *</label><input id="f-name" name="name" autocomplete="name" value="${esc(draft.name)}" required><span class="err"></span></div>
@@ -585,15 +623,150 @@
   }
 
   function pageOrders() {
+    if (user) { setTimeout(() => { location.hash = "#/compte"; }); return ""; }
     document.title = `Mes commandes – ${S.name}`;
     return `<div class="container page-head">${crumbs([["Mes commandes"]])}<h1>Mes commandes</h1></div>
-      <div class="container" style="padding-bottom:48px"><div class="panel orders">
+      <div class="container" style="padding-bottom:48px">
+      ${db ? `<div class="account-note">Créez un compte ou <a href="#/compte" class="link">connectez-vous</a> pour retrouver vos commandes sur tous vos appareils. Ci-dessous : les commandes passées depuis cet appareil.</div>` : ""}
+      <div class="panel orders">
         ${orders.length ? orders.map((o) => `<div class="order">
           <div class="order-head"><span>${o.id}</span><span>${new Date(o.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</span></div>
           <p class="hint" style="margin:6px 0">${o.items.map((i) => `${i.qty} × ${esc(i.name)}`).join(" · ")}</p>
           <div class="order-head"><span>${money(o.total)} · ${esc(o.payment)}</span><a class="link" target="_blank" rel="noopener" href="${waLink(`Bonjour, je souhaite suivre ma commande ${o.id}.`)}">Suivre sur WhatsApp →</a></div>
         </div>`).join("") : `<div class="empty" style="box-shadow:none"><div class="big">📦</div><p>Aucune commande passée depuis cet appareil.</p><a href="#/boutique" class="btn btn-primary">Commencer mes achats</a></div>`}
       </div></div>`;
+  }
+
+  function pageAccount() {
+    document.title = `Mon compte – ${S.name}`;
+    if (!db) return pageNotFound();
+    const head = (title) => `<div class="container page-head">${crumbs([["Mon compte"]])}<h1>${title}</h1></div>`;
+    if (recoveryMode && user) {
+      return `${head("Nouveau mot de passe")}<div class="container" style="padding-bottom:48px;max-width:520px"><div class="panel">
+        <form id="newpass-form" style="display:grid;gap:14px">
+          <div class="field"><label for="np-pass">Nouveau mot de passe</label><input id="np-pass" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
+          <button class="btn btn-primary">Enregistrer</button>
+        </form></div></div>`;
+    }
+    if (!user) {
+      return `${head("Mon compte")}
+        <div class="container"><div id="acc-msg"></div></div>
+        <div class="container account-grid">
+          <div class="panel">
+            <h3>J'ai déjà un compte</h3>
+            <form id="login-form" novalidate>
+              <div class="field"><label for="l-email">Email</label><input id="l-email" name="email" type="email" autocomplete="email" required></div>
+              <div class="field"><label for="l-pass">Mot de passe</label><input id="l-pass" name="password" type="password" autocomplete="current-password" required></div>
+              <button class="btn btn-dark">Se connecter</button>
+              <button type="button" class="link" data-forgot style="border:0;background:none;padding:0;justify-self:start">Mot de passe oublié ?</button>
+            </form>
+          </div>
+          <div class="panel">
+            <h3>Créer mon compte client</h3>
+            <p class="hint" style="margin-top:-6px">Suivez vos commandes et commandez plus vite : vos coordonnées sont pré-remplies.</p>
+            <form id="signup-form" novalidate>
+              <div class="field"><label for="s-name">Nom complet</label><input id="s-name" name="name" autocomplete="name" required></div>
+              <div class="field"><label for="s-phone">Téléphone</label><input id="s-phone" name="phone" type="tel" autocomplete="tel" placeholder="6XX XX XX XX" required></div>
+              <div class="field"><label for="s-email">Email</label><input id="s-email" name="email" type="email" autocomplete="email" required></div>
+              <div class="field"><label for="s-pass">Mot de passe <small class="hint">(8 caractères minimum)</small></label><input id="s-pass" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
+              <button class="btn btn-primary">Créer mon compte</button>
+            </form>
+          </div>
+        </div>`;
+    }
+    setTimeout(loadMyOrders);
+    const p = profile || {};
+    return `${head(`Bonjour ${esc((p.full_name || "").split(" ")[0] || "")} 👋`)}
+      <div class="container"><div id="acc-msg"></div></div>
+      <div class="container account-grid">
+        <div class="panel">
+          <div class="account-head"><h3 style="margin:0">Mes commandes</h3><a href="#/boutique" class="link">Continuer mes achats →</a></div>
+          <div id="my-orders" class="orders" style="margin-top:14px"><p class="hint">Chargement…</p></div>
+        </div>
+        <div class="panel" style="align-self:start">
+          <h3>Mes informations</h3>
+          <p class="hint" style="margin-top:-6px">${esc(user.email)}</p>
+          <form id="profile-form" novalidate>
+            <div class="field"><label for="p-name">Nom complet</label><input id="p-name" name="name" value="${esc(p.full_name)}" autocomplete="name"></div>
+            <div class="field"><label for="p-phone">Téléphone</label><input id="p-phone" name="phone" type="tel" value="${esc((p.phone || "").replace(/^\+224\s?/, ""))}" placeholder="6XX XX XX XX"></div>
+            <div class="field"><label for="p-zone">Zone de livraison</label><select id="p-zone" name="zone"><option value="">—</option>${S.deliveryZones.map((z) => `<option value="${z.id}" ${p.zone_id === z.id ? "selected" : ""}>${esc(z.name)}</option>`).join("")}</select></div>
+            <div class="field"><label for="p-address">Quartier / adresse</label><input id="p-address" name="address" value="${esc(p.address)}"></div>
+            <button class="btn btn-dark">Enregistrer</button>
+          </form>
+          <button class="btn btn-outline btn-block" data-logout style="margin-top:14px">Se déconnecter</button>
+        </div>
+      </div>`;
+  }
+
+  async function loadMyOrders() {
+    const box = document.getElementById("my-orders");
+    if (!box || !user) return;
+    const { data, error } = await db.from("orders").select("id,created_at,status,items,total,payment,zone_name")
+      .eq("user_id", user.id).order("created_at", { ascending: false }).limit(50);
+    if (error) { box.innerHTML = `<p class="hint">Impossible de charger vos commandes pour le moment.</p>`; return; }
+    box.innerHTML = data.length ? data.map((o) => `<div class="order">
+        <div class="order-head"><span>${esc(o.id)}</span><span class="status-pill ${o.status}">${ORDER_STATUS[o.status] || o.status}</span></div>
+        <p class="hint" style="margin:6px 0">${new Date(o.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} · ${o.items.map((i) => `${i.qty} × ${esc(i.name)}`).join(" · ")}</p>
+        <div class="order-head"><span>${money(o.total)} · ${esc(o.payment)}</span><a class="link" target="_blank" rel="noopener" href="${waLink(`Bonjour, je souhaite suivre ma commande ${o.id}.`)}">Suivre sur WhatsApp →</a></div>
+      </div>`).join("")
+      : `<div class="empty" style="box-shadow:none;padding:30px 0"><div class="big">📦</div><p>Aucune commande pour le moment.</p><a href="#/boutique" class="btn btn-primary">Découvrir la boutique</a></div>`;
+  }
+
+  function accMsg(html, kind = "") {
+    const el = document.getElementById("acc-msg");
+    if (el) { el.innerHTML = `<div class="account-note" style="${kind === "err" ? "background:#fee2e2;border-color:#fecaca;color:#991b1b" : ""}">${html}</div>`; el.scrollIntoView({ block: "nearest" }); }
+  }
+
+  async function submitAccountForm(f) {
+    const d = Object.fromEntries(new FormData(f));
+    const btn = $("button:not([type=button])", f);
+    const busy = (on) => { if (btn) btn.disabled = on; };
+    if (f.id === "login-form") {
+      if (!d.email || !d.password) return accMsg("Saisissez votre email et votre mot de passe.", "err");
+      busy(true);
+      const { error } = await db.auth.signInWithPassword({ email: d.email.trim(), password: d.password });
+      busy(false);
+      if (error) return accMsg(esc(authError(error)), "err");
+      await loadAccount(); render(); toast("Connexion réussie");
+    } else if (f.id === "signup-form") {
+      const digits = (d.phone || "").replace(/\D/g, "").replace(/^(00)?224/, "");
+      if ((d.name || "").trim().length < 3) return accMsg("Indiquez votre nom complet.", "err");
+      if (!/^6\d{8}$/.test(digits)) return accMsg("Numéro guinéen invalide (9 chiffres, commence par 6).", "err");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email || "")) return accMsg("Adresse email invalide.", "err");
+      if ((d.password || "").length < 8) return accMsg("Le mot de passe doit contenir au moins 8 caractères.", "err");
+      busy(true);
+      const { data, error } = await db.auth.signUp({
+        email: d.email.trim(), password: d.password,
+        options: { data: { full_name: d.name.trim(), phone: "+224 " + digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4") }, emailRedirectTo: location.origin + location.pathname + "#/compte" }
+      });
+      busy(false);
+      if (error) return accMsg(esc(authError(error)), "err");
+      if (data.session) { await loadAccount(); render(); toast("Bienvenue ! Votre compte est créé."); return; }
+      f.reset();
+      accMsg(`✓ Compte créé. Ouvrez l'email envoyé à <b>${esc(d.email.trim())}</b> et cliquez sur le lien de confirmation, puis connectez-vous ici. (Pensez à vérifier les spams.)`);
+    } else if (f.id === "profile-form") {
+      const digits = (d.phone || "").replace(/\D/g, "").replace(/^(00)?224/, "");
+      if (digits && !/^6\d{8}$/.test(digits)) return accMsg("Numéro guinéen invalide (9 chiffres, commence par 6).", "err");
+      busy(true);
+      const { data, error } = await db.from("customer_profiles").update({
+        full_name: (d.name || "").trim(), address: (d.address || "").trim(), zone_id: d.zone || null,
+        phone: digits ? "+224 " + digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4") : ""
+      }).eq("user_id", user.id).select().maybeSingle();
+      busy(false);
+      if (error || !data) return accMsg("Enregistrement impossible, réessayez.", "err");
+      profile = data;
+      store.set("customer", {});
+      toast("Informations enregistrées ✓");
+    } else if (f.id === "newpass-form") {
+      if ((d.password || "").length < 8) return toast("8 caractères minimum");
+      busy(true);
+      const { error } = await db.auth.updateUser({ password: d.password });
+      busy(false);
+      if (error) return toast(authError(error));
+      recoveryMode = false;
+      toast("Mot de passe modifié ✓");
+      render();
+    }
   }
 
   function pageWish() {
@@ -699,6 +872,7 @@
       case "commande": html = pageCheckout(); break;
       case "merci": html = pageThanks(decodeURIComponent(parts[1] || "")); break;
       case "mes-commandes": html = pageOrders(); break;
+      case "compte": html = pageAccount(); break;
       case "favoris": html = pageWish(); break;
       case "a-propos": html = pageAbout(); break;
       case "livraison": html = pageDelivery(); break;
@@ -724,7 +898,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) addToCart(d.add);
@@ -737,6 +911,13 @@
     else if (d.pbuy) { addToCart(d.pbuy, Math.max(1, Number($("#pqty").value) || 1)); location.hash = "#/commande"; }
     else if ("promoRemove" in d) { promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
     else if (el.id === "filter-toggle") $("#filters").classList.toggle("open");
+    else if ("logout" in d) { db.auth.signOut().then(async () => { store.set("customer", {}); await loadAccount(); render(); toast("Vous êtes déconnecté(e)"); }); }
+    else if ("forgot" in d) {
+      const email = ($("#l-email") || {}).value?.trim();
+      if (!email) return accMsg("Saisissez d'abord votre email dans le champ ci-dessus.", "err");
+      db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + "#/compte" })
+        .then(({ error }) => error ? accMsg(esc(authError(error)), "err") : accMsg(`Un lien pour choisir un nouveau mot de passe a été envoyé à <b>${esc(email)}</b>.`));
+    }
     else if ("close" in d) closeDrawers();
   });
 
@@ -799,6 +980,9 @@
     } else if (f.id === "checkout") {
       e.preventDefault();
       submitCheckout(f);
+    } else if (["login-form", "signup-form", "profile-form", "newpass-form"].includes(f.id)) {
+      e.preventDefault();
+      submitAccountForm(f);
     } else if (f.id === "contact-form") {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(f));
@@ -826,7 +1010,7 @@
     $("#mobile-menu-body").innerHTML = [
       ["#/", "🏠 Accueil"], ["#/boutique", "🛍️ Boutique"], ["#/boutique?promo=1", "🔥 Promotions"],
       ...CATEGORIES.map((c) => [`#/boutique?cat=${c.id}`, `　${c.name}`]),
-      ["#/favoris", "♡ Mes favoris"], ["#/mes-commandes", "📦 Mes commandes"], ["#/livraison", "🚚 Livraison"], ["#/faq", "❓ FAQ"], ["#/contact", "💬 Contact"]
+      ["#/compte", "👤 Mon compte"], ["#/favoris", "♡ Mes favoris"], ["#/mes-commandes", "📦 Mes commandes"], ["#/livraison", "🚚 Livraison"], ["#/faq", "❓ FAQ"], ["#/contact", "💬 Contact"]
     ].map(([h, l]) => `<a class="mm-link" href="${h}">${esc(l)}</a>`).join("");
     $("#wa-float").href = waLink(`Bonjour ${S.name} !`);
     const socials = Object.entries(S.socials).filter(([, v]) => v);
@@ -834,7 +1018,7 @@
       <div><a href="#/" class="logo">${logo}</a><p>${esc(S.tagline)}.</p><p>📍 ${esc(S.address)}</p><p>📞 ${esc(S.phoneDisplay)}</p>
         <div class="pay-badges"><span>Orange Money</span><span>MTN MoMo</span><span>Espèces</span></div></div>
       <div><h4>Boutique</h4>${CATEGORIES.slice(0, 6).map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}<a href="#/boutique?promo=1">Promotions</a></div>
-      <div><h4>Aide</h4><a href="#/livraison">Livraison & retours</a><a href="#/faq">FAQ</a><a href="#/mes-commandes">Suivre ma commande</a><a href="#/contact">Contact</a><a href="#/cgv">CGV</a><a href="#/a-propos">À propos</a></div>
+      <div><h4>Aide</h4><a href="#/compte">Mon compte</a><a href="#/livraison">Livraison & retours</a><a href="#/faq">FAQ</a><a href="#/mes-commandes">Suivre ma commande</a><a href="#/contact">Contact</a><a href="#/cgv">CGV</a><a href="#/a-propos">À propos</a></div>
       <div><h4>Besoin d'aide ?</h4><p>Notre équipe vous répond sur WhatsApp.</p><a class="btn btn-wa" style="display:inline-flex;color:#fff" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">Écrire sur WhatsApp</a>
         ${socials.length ? `<p style="margin-top:12px">${socials.map(([k, v]) => `<a href="${esc(v)}" target="_blank" rel="noopener" style="display:inline;margin-right:10px">${k}</a>`).join("")}</p>` : ""}</div>`;
     $("#footer-bottom").innerHTML = `<span>© ${new Date().getFullYear()} ${esc(S.name)}. Tous droits réservés.</span><span>${esc(S.hours)}</span>`;
@@ -842,7 +1026,26 @@
 
   async function boot() {
     app.innerHTML = `<div class="container" style="padding:80px 16px;text-align:center"><p class="hint">Chargement de la boutique…</p></div>`;
-    await loadCatalog();
+    await Promise.all([loadCatalog(), loadAccount()]);
+    // Retour d'un lien email (confirmation, mot de passe) : jetons dans l'adresse
+    if (/access_token|error_description|type=recovery/.test(location.hash)) {
+      if (/type=recovery/.test(location.hash)) recoveryMode = true;
+      if (/error_description/.test(location.hash)) setTimeout(() => toast("Lien expiré ou invalide : demandez-en un nouveau."), 300);
+      history.replaceState(null, "", location.pathname + "#/compte");
+    }
+    if (db) {
+      db.auth.onAuthStateChange((event) => {
+        // Pas d'appel Supabase directement dans ce rappel (recommandation de la librairie)
+        setTimeout(async () => {
+          if (event === "PASSWORD_RECOVERY") { recoveryMode = true; location.hash = "#/compte"; }
+          if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "PASSWORD_RECOVERY") {
+            const before = user && user.id;
+            await loadAccount();
+            if ((user && user.id) !== before && ["/compte", "/commande", "/mes-commandes"].includes(currentPath())) render();
+          }
+        }, 0);
+      });
+    }
     cart = cart.filter((l) => byId(l.id));
     wish = wish.filter((id) => byId(id));
     renderShell();
