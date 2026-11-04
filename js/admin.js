@@ -104,7 +104,8 @@
   async function start() {
     const { data } = await sb.auth.getSession();
     session = data.session;
-    if (!session) return viewAuth();
+    // Lien direct vers l'inscription : /admin#inscription
+    if (!session) return viewAuth(location.hash === "#inscription" ? "signup" : "login");
     const { data: ok, error } = await sb.rpc("is_admin");
     if (error) return fail(error);
     if (!ok) {
