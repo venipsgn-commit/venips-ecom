@@ -398,14 +398,19 @@
     const off = discount(p);
     const on = wish.includes(p.id);
     const related = PRODUCTS.filter((x) => x.category === p.category && x.id !== p.id).slice(0, 4);
+    const gallery = p.image ? [p.image, ...(p.images || [])] : [];
+    currentGallery = gallery;
+    galleryIndex = 0;
     const stockHTML = p.stock <= 0 ? `<div class="stock no">✕ Rupture de stock</div>` : p.stock <= 5 ? `<div class="stock low">⚠ Plus que ${p.stock} en stock – commandez vite</div>` : `<div class="stock ok">✓ En stock, prêt à être livré</div>`;
     document.title = `${p.name} – ${S.name}`;
     return `
       <div class="container page-head">${crumbs([["Boutique", "#/boutique"], [catName(p.category), `#/boutique?cat=${p.category}`], [p.name]])}</div>
       <div class="container product">
         <div>
-          <div class="product-media" id="main-media">${media(p)}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}</div>
-          ${p.image && p.images && p.images.length ? `<div class="thumbs">${[p.image, ...p.images].map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-img="${esc(u)}" aria-label="Image ${i + 1}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.thumb').remove()"></button>`).join("")}</div>` : ""}
+          <div class="gallery ${gallery.length > 1 ? "has-thumbs" : ""}">
+            ${gallery.length > 1 ? `<div class="thumbs">${gallery.map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-img="${i}" aria-label="Voir l'image ${i + 1}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.thumb').remove()"></button>`).join("")}</div>` : ""}
+            <div class="product-media ${gallery.length ? "zoomable" : ""}" id="main-media" ${gallery.length ? "data-open-viewer" : ""}>${media(p)}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}${gallery.length ? `<span class="zoom-hint">🔍 Cliquez pour agrandir</span>` : ""}</div>
+          </div>
         </div>
         <div class="product-info">
           <div class="card-brand">${esc(p.brand)}</div>
@@ -871,6 +876,92 @@
     return `<div class="container" style="padding:48px 16px"><div class="empty"><div class="big">🤔</div><h2>Page introuvable</h2><p class="hint">Le lien est peut-être incorrect ou le produit n'existe plus.</p><a href="#/" class="btn btn-primary">Retour à l'accueil</a></div></div>`;
   }
 
+
+  /* ---------- Galerie et visionneuse (fiche produit) ---------- */
+  let currentGallery = [];
+  let galleryIndex = 0;
+  let viewerIndex = 0;
+  const canHover = () => window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  function showImage(i) {
+    if (!currentGallery[i]) return;
+    galleryIndex = i;
+    const img = $("#main-media img");
+    if (img) { img.style.visibility = ""; img.src = currentGallery[i]; }
+    $$(".gallery .thumb").forEach((t) => t.classList.toggle("on", +t.dataset.img === i));
+  }
+
+  function openViewer(i) {
+    if (!currentGallery.length) return;
+    let v = $("#viewer");
+    if (!v) {
+      v = document.createElement("div");
+      v.id = "viewer";
+      v.className = "viewer";
+      v.setAttribute("role", "dialog");
+      v.setAttribute("aria-modal", "true");
+      document.body.appendChild(v);
+      v.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-viewer],[data-viewer-i]");
+        if (b && b.dataset.viewer === "prev") return stepViewer(-1);
+        if (b && b.dataset.viewer === "next") return stepViewer(1);
+        if (b && b.dataset.viewerI !== undefined) return setViewer(+b.dataset.viewerI);
+        if ((b && b.dataset.viewer === "close") || e.target === v || e.target.classList.contains("viewer-stage")) closeViewer();
+      });
+      let startX = null;
+      v.addEventListener("touchstart", (e) => { startX = e.touches[0].clientX; }, { passive: true });
+      v.addEventListener("touchend", (e) => {
+        if (startX === null) return;
+        const dx = e.changedTouches[0].clientX - startX;
+        if (Math.abs(dx) > 50) stepViewer(dx < 0 ? 1 : -1);
+        startX = null;
+      });
+    }
+    const n = currentGallery.length;
+    v.innerHTML = `
+      <button class="viewer-close" data-viewer="close" aria-label="Fermer">✕</button>
+      ${n > 1 ? `<button class="viewer-nav prev" data-viewer="prev" aria-label="Image précédente">‹</button><button class="viewer-nav next" data-viewer="next" aria-label="Image suivante">›</button>` : ""}
+      <div class="viewer-stage"><img id="viewer-img" alt="" referrerpolicy="no-referrer"></div>
+      ${n > 1 ? `<div class="viewer-thumbs">${currentGallery.map((u, k) => `<button data-viewer-i="${k}" aria-label="Image ${k + 1}"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer"></button>`).join("")}</div>` : ""}
+      <div class="viewer-count"></div>`;
+    v.classList.add("open");
+    document.body.style.overflow = "hidden";
+    setViewer(i);
+  }
+  function setViewer(i) {
+    const n = currentGallery.length;
+    viewerIndex = (i + n) % n;
+    $("#viewer-img").src = currentGallery[viewerIndex];
+    $$(".viewer-thumbs button").forEach((b) => b.classList.toggle("on", +b.dataset.viewerI === viewerIndex));
+    $(".viewer-count").textContent = n > 1 ? `${viewerIndex + 1} / ${n}` : "";
+  }
+  const stepViewer = (dir) => setViewer(viewerIndex + dir);
+  function closeViewer() {
+    const v = $("#viewer");
+    if (!v || !v.classList.contains("open")) return;
+    v.classList.remove("open");
+    document.body.style.overflow = "";
+    showImage(viewerIndex);
+  }
+
+  // Survol d'une miniature = changement d'image (comme sur Amazon), sur ordinateur
+  document.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".gallery .thumb");
+    if (t && canHover()) showImage(+t.dataset.img);
+  });
+  // Loupe au survol de l'image principale
+  document.addEventListener("mousemove", (e) => {
+    const box = e.target.closest(".product-media.zoomable");
+    $$(".product-media.zooming").forEach((m) => { if (m !== box) m.classList.remove("zooming"); });
+    if (!box || !canHover()) return;
+    const img = $("img", box);
+    if (!img) return;
+    const r = box.getBoundingClientRect();
+    img.style.transformOrigin = `${((e.clientX - r.left) / r.width) * 100}% ${((e.clientY - r.top) / r.height) * 100}%`;
+    box.classList.add("zooming");
+  });
+  document.addEventListener("mouseleave", () => $$(".product-media.zooming").forEach((m) => m.classList.remove("zooming")));
+
   /* ---------- Routeur ---------- */
   function currentPath() { return (location.hash.slice(1) || "/").split("?")[0]; }
   function render() {
@@ -896,6 +987,8 @@
       case "cgv": html = pageTerms(); break;
       default: html = pageNotFound();
     }
+    closeViewer();
+    if (parts[0] !== "produit") currentGallery = [];
     app.innerHTML = html;
     $("#search-input").value = params.get("q") || "";
     $$("#catnav a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + raw));
@@ -913,7 +1006,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) addToCart(d.add);
@@ -925,11 +1018,8 @@
     else if (d.padd) addToCart(d.padd, Math.max(1, Number($("#pqty").value) || 1));
     else if (d.pbuy) { addToCart(d.pbuy, Math.max(1, Number($("#pqty").value) || 1)); location.hash = "#/commande"; }
     else if ("promoRemove" in d) { promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
-    else if (d.img) {
-      const img = $("#main-media img");
-      if (img) img.src = d.img;
-      $$(".thumbs .thumb").forEach((t) => t.classList.toggle("on", t === el));
-    }
+    else if ("img" in d) showImage(+d.img);
+    else if ("openViewer" in d) openViewer(galleryIndex);
     else if (el.id === "filter-toggle") $("#filters").classList.toggle("open");
     else if ("logout" in d) { db.auth.signOut().then(async () => { store.set("customer", {}); await loadAccount(); render(); toast("Vous êtes déconnecté(e)"); }); }
     else if ("forgot" in d) {
@@ -1015,7 +1105,12 @@
   $("#cart-btn").addEventListener("click", () => { renderCartDrawer(); openDrawer("#cart-drawer"); });
   $("#menu-btn").addEventListener("click", () => openDrawer("#mobile-menu"));
   $("#overlay").addEventListener("click", closeDrawers);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawers(); });
+  document.addEventListener("keydown", (e) => {
+    const viewerOpen = $("#viewer.open");
+    if (e.key === "Escape") { if (viewerOpen) closeViewer(); else closeDrawers(); }
+    else if (viewerOpen && e.key === "ArrowLeft") stepViewer(-1);
+    else if (viewerOpen && e.key === "ArrowRight") stepViewer(1);
+  });
   window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); });
 
   /* ---------- Gabarit (header, footer) ---------- */
