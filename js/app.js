@@ -6,7 +6,7 @@
 
   const S = window.STORE;
   // Catalogue de secours (js/products.js), remplacé par la base Supabase dès qu'elle répond
-  let PRODUCTS = window.PRODUCTS.map((p, i) => ({ ...p, position: i }));
+  let PRODUCTS = window.PRODUCTS.filter((p) => p.stock > 0).map((p, i) => ({ ...p, position: i }));
   let CATEGORIES = window.CATEGORIES;
   const db = S.supabaseUrl && window.supabase
     ? window.supabase.createClient(S.supabaseUrl, S.supabaseKey)
@@ -53,7 +53,8 @@
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("délai dépassé")), 8000));
       const [c, p, z, s] = await Promise.race([Promise.all([
         db.from("categories").select("*").order("position"),
-        db.from("products").select("*").order("position").order("created_at"),
+        // Seuls les produits en ligne et en stock (même pour un administrateur connecté)
+        db.from("products").select("*").eq("active", true).gt("stock", 0).order("position").order("created_at"),
         db.from("delivery_zones").select("*").order("position"),
         db.from("shop_settings").select("*")
       ]), timeout]);

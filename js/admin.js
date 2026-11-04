@@ -339,11 +339,11 @@
       <tr><th></th><th>Produit</th><th>Catégorie</th><th style="text-align:right">Prix</th><th>Stock</th><th>En ligne</th><th></th></tr>
       ${list.map((p) => `<tr data-id="${esc(p.id)}">
         <td><div class="thumb-sm">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "📦"}</div></td>
-        <td><b>${esc(p.name)}</b><br><small class="muted">${esc(p.brand)}${p.featured ? " · ⭐ vedette" : ""}${p.badge ? ` · ${esc(p.badge)}` : ""}${p.source_id ? " · 🔄 stock synchronisé" : ""}${p.images && p.images.length ? ` · 🖼️ ${p.images.length + 1} images` : ""}</small></td>
+        <td><b>${esc(p.name)}</b><br><small class="muted">${esc(p.brand)}${p.featured ? " · ⭐ vedette" : ""}${p.badge ? ` · ${esc(p.badge)}` : ""}${p.source_id ? " · 🔄 stock synchronisé" : ""}${p.auto_hidden ? " · ⛔ masqué : stock épuisé (réapparaîtra au réassort)" : !p.active ? " · masqué manuellement" : ""}${p.images && p.images.length ? ` · 🖼️ ${p.images.length + 1} images` : ""}</small></td>
         <td>${esc(catName(p.category_id))}</td>
         <td style="width:150px"><input type="number" min="0" step="1000" value="${p.price}" data-price aria-label="Prix de vente">${p.old_price ? `<small class="muted"><s>${money(p.old_price)}</s></small>` : ""}</td>
         <td style="width:110px"><input type="number" min="0" value="${p.stock}" data-stock class="${p.stock === 0 ? "stock-out" : p.stock <= 3 ? "stock-low" : ""}" aria-label="Stock" title="${p.source_id ? "Mis à jour automatiquement par le logiciel de gestion" : ""}"></td>
-        <td><label class="check"><input type="checkbox" data-active ${p.active ? "checked" : ""}></label></td>
+        <td><label class="check" title="${p.stock <= 0 ? "Stock épuisé : le produit est masqué automatiquement" : ""}"><input type="checkbox" data-active ${p.active ? "checked" : ""}></label></td>
         <td><div class="row-actions"><button class="btn btn-outline btn-sm" data-edit>Modifier</button><button class="btn btn-danger btn-sm" data-del>Supprimer</button></div></td>
       </tr>`).join("")}
     </table>`;
@@ -369,15 +369,18 @@
         const stock = Math.max(0, parseInt(e.target.value, 10) || 0);
         const { error } = await sb.from("products").update({ stock }).eq("id", p.id);
         if (error) return fail(error);
-        p.stock = stock;
-        e.target.className = stock === 0 ? "stock-out" : stock <= 3 ? "stock-low" : "";
-        toast(`Stock de « ${p.name} » : ${stock}`);
+        const { data: fresh } = await sb.from("products").select("*").eq("id", p.id).single();
+        Object.assign(p, fresh || { stock });
+        toast(`Stock de « ${p.name} » : ${stock}${p.auto_hidden ? " — produit masqué (stock épuisé)" : ""}`);
+        drawProducts();
       });
       $("[data-active]", tr).addEventListener("change", async (e) => {
         const { error } = await sb.from("products").update({ active: e.target.checked }).eq("id", p.id);
         if (error) { e.target.checked = !e.target.checked; return fail(error); }
-        p.active = e.target.checked;
-        toast(p.active ? "Produit visible sur le site" : "Produit masqué du site");
+        const { data: fresh } = await sb.from("products").select("*").eq("id", p.id).single();
+        Object.assign(p, fresh || { active: e.target.checked });
+        toast(p.active ? "Produit visible sur le site" : p.stock <= 0 ? "Stock épuisé : le produit reste masqué tant qu'il n'y a pas de stock" : "Produit masqué du site");
+        drawProducts();
       });
     });
   }
