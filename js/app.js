@@ -15,6 +15,7 @@
   /* ---------- Compte client ---------- */
   let user = null;
   let profile = null;
+  let isAdmin = false;
   let recoveryMode = false;
   const ORDER_STATUS = { nouvelle: "Reçue", confirmee: "Confirmée", en_livraison: "En livraison", livree: "Livrée", annulee: "Annulée" };
 
@@ -23,12 +24,19 @@
     const { data } = await db.auth.getSession();
     user = data.session ? data.session.user : null;
     profile = null;
+    isAdmin = false;
     if (user) {
-      const { data: p } = await db.from("customer_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      const [{ data: p }, { data: adm }] = await Promise.all([
+        db.from("customer_profiles").select("*").eq("user_id", user.id).maybeSingle(),
+        db.rpc("is_admin")
+      ]);
       profile = p;
+      isAdmin = adm === true;
     }
     const dot = document.getElementById("account-dot");
     if (dot) dot.hidden = !user;
+    const adminLink = document.getElementById("admin-link");
+    if (adminLink) adminLink.hidden = !isAdmin;
   }
 
   const AUTH_ERRORS = {
@@ -680,6 +688,10 @@
     setTimeout(loadMyOrders);
     const p = profile || {};
     return `${head(`Bonjour ${esc((p.full_name || "").split(" ")[0] || "")} 👋`)}
+      ${isAdmin ? `<div class="container"><div class="admin-banner">
+        <div><strong>🔐 Vous êtes administrateur</strong><span>Gérez les commandes, les produits, les prix, les images et les clients.</span></div>
+        <a href="admin.html" class="btn btn-primary">Ouvrir l'espace admin →</a>
+      </div></div>` : ""}
       <div class="container"><div id="acc-msg"></div></div>
       <div class="container account-grid">
         <div class="panel">
