@@ -40,36 +40,36 @@
 <body>
   <div class="topbar">
     <div class="container topbar-inner">
-      <span>🚚 Livraison rapide à Conakry · Paiement à la livraison</span>
+      <span class="tb-msg"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg> Livraison le jour même à Conakry <span class="sep">·</span> Paiement à la livraison</span>
       <span class="hide-sm" id="topbar-phone"></span>
     </div>
   </div>
 
   <header class="header">
     <div class="container header-inner">
-      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu">☰</button>
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <a href="#/" class="logo" id="logo"></a>
       <form class="search" id="search-form" role="search">
         <input type="search" id="search-input" placeholder="Rechercher un produit, une marque…" aria-label="Rechercher">
-        <button type="submit" aria-label="Lancer la recherche">🔍</button>
+        <button type="submit" aria-label="Lancer la recherche"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
       </form>
       <nav class="header-actions">
-        <a href="admin.html" class="admin-link" id="admin-link" hidden title="Espace administrateur">🔐 Admin</a>
+        <a href="admin.html" class="admin-link" id="admin-link" hidden title="Espace administrateur"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Admin</a>
         <a href="#/compte" class="icon-btn account-btn" aria-label="Mon compte" title="Mon compte"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg><span class="dot" id="account-dot" hidden></span></a>
-        <a href="#/favoris" class="icon-btn" aria-label="Favoris">♡<span class="count" id="wish-count">0</span></a>
-        <button class="icon-btn cart-btn" id="cart-btn" aria-label="Panier">🛒<span class="count" id="cart-count">0</span></button>
+        <a href="#/favoris" class="icon-btn" aria-label="Favoris"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-9.2-8.6A5 5 0 0 1 12 6a5 5 0 0 1 9.2 5.4C19 15.6 12 20 12 20z"/></svg><span class="count" id="wish-count">0</span></a>
+        <button class="icon-btn cart-btn" id="cart-btn" aria-label="Panier"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></svg><span class="count" id="cart-count">0</span></button>
       </nav>
     </div>
     <nav class="catnav" id="catnav"></nav>
   </header>
 
   <aside class="drawer" id="mobile-menu" aria-hidden="true">
-    <div class="drawer-head"><strong>Menu</strong><button class="icon-btn" data-close>✕</button></div>
+    <div class="drawer-head"><strong>Menu</strong><button class="icon-btn" data-close aria-label="Fermer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="drawer-body" id="mobile-menu-body"></div>
   </aside>
 
   <aside class="drawer drawer-right" id="cart-drawer" aria-hidden="true">
-    <div class="drawer-head"><strong>Mon panier</strong><button class="icon-btn" data-close>✕</button></div>
+    <div class="drawer-head"><strong>Mon panier</strong><button class="icon-btn" data-close aria-label="Fermer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="drawer-body" id="cart-drawer-body"></div>
   </aside>
   <div class="overlay" id="overlay"></div>

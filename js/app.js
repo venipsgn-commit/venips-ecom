@@ -117,6 +117,91 @@
   let promoPct = store.get("promoPct", 0);
   let orders = store.get("orders", []);
 
+  /* ---------- Icônes de l'interface (traits fins, couleur du texte) ---------- */
+  const ICONS = {
+    truck: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+    wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M16 12.5h2"/><path d="M3 9h18"/>',
+    shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    pin: '<path d="M12 21s-7-6.2-7-12a7 7 0 1 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    tag: '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+    heart: '<path d="M12 20s-7-4.4-9.2-8.6A5 5 0 0 1 12 6a5 5 0 0 1 9.2 5.4C19 15.6 12 20 12 20z"/>',
+    cart: '<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+    zoom: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5M11 8v6M8 11h6"/>',
+    menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
+    bag: '<path d="M6 7h12l1 14H5z"/><path d="M9 7a3 3 0 0 1 6 0"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17h.01"/>',
+    refresh: '<path d="M20 11a8 8 0 0 0-14-4.5L4 9M4 4v5h5M4 13a8 8 0 0 0 14 4.5l2-2.5M20 20v-5h-5"/>',
+    check: '<path d="M5 12l5 5L20 7"/>',
+    alert: '<path d="M12 3L2 20h20z"/><path d="M12 9v5M12 17h.01"/>',
+    filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+    laptop: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+    mouse: '<rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 7v3"/>',
+    star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+    cpu: '<rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+    drive: '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h6"/>',
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+    party: '<path d="M4 20l5-14 9 9z"/><path d="M14 4l.5 2M19 5l-1.5 1.5M20 10l-2-.5"/>',
+    sad: '<circle cx="12" cy="12" r="9"/><path d="M8.5 16a4.5 4.5 0 0 1 7 0M9 10h.01M15 10h.01"/>'
+  };
+  const ic = (name, size = 20, cls = "") => `<svg class="ui-ic ${cls}" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+
+  /* ---------- Noms de produits affichés proprement (la base n'est pas modifiée) ---------- */
+  const ACRONYMS = new Set(["PC", "HDD", "SSD", "USB", "HDMI", "RAM", "LED", "SD", "TV", "HP", "MTN", "4K", "UHD", "OLED"]);
+  const WORD_FIX = { cle: "clé", camera: "caméra", sdd: "SSD", ecran: "écran", etiquettes: "étiquettes" };
+  const BRANDS = { hp: "HP", dell: "Dell", lenovo: "Lenovo", acer: "Acer", apple: "Apple", asus: "Asus", samsung: "Samsung", toshiba: "Toshiba", microsoft: "Microsoft" };
+  function niceName(raw) {
+    const words = String(raw || "").trim().split(/\s+/);
+    const out = words.map((w, i) => {
+      const lw = w.toLowerCase();
+      if (BRANDS[lw]) return BRANDS[lw];
+      if (/^hpx\d+$/i.test(w)) return "HP X" + w.slice(3);
+      if (/^i[3579]$/i.test(w)) return lw;                       // i5, i7…
+      if (/^\d+(th|e|eme|ème)$/i.test(w)) return lw.replace(/eme|ème/, "e");  // 10th, 11e
+      let m = w.match(/^(\d+)\s*(giga|go|gb)$/i); if (m) return m[1] + " Go";
+      m = w.match(/^(\d+)(t|to|tb)$/i); if (m) return m[1] + " To";
+      m = w.match(/^([a-z]{3,})(\d)$/i); if (m) return (i === 0 ? cap(m[1].toLowerCase()) : m[1].toLowerCase()) + " " + m[2];
+      if (/\d/.test(w)) return /^[a-z]{1,2}\d/i.test(w) ? w.charAt(0).toUpperCase() + w.slice(1).replace(/^([a-z]?)(\d+)([a-z]*)$/i, (x, a, d, b) => a.toUpperCase() + d + (b.length > 1 ? b.toLowerCase() : b.toLowerCase())) : w;
+      if (ACRONYMS.has(w.toUpperCase()) && w.length <= 4) return w.toUpperCase();
+      if (WORD_FIX[lw]) return i === 0 ? cap(WORD_FIX[lw]) : WORD_FIX[lw];
+      if (w === w.toUpperCase() && w.length > 2) return i === 0 ? cap(lw) : lw;   // MAJUSCULES → normal
+      return i === 0 ? cap(w) : w;
+    });
+    return out.join(" ").replace(/\s+\/\s+/g, " / ");
+  }
+  function cap(w) { return w.charAt(0).toUpperCase() + w.slice(1); }
+
+  // Petites étiquettes techniques lues dans le nom (et les caractéristiques saisies dans l'admin)
+  function specChips(p) {
+    const chips = [];
+    const n = " " + String(p.name).toLowerCase() + " ";
+    const sp = p.specs || {};
+    const cpu = sp["Processeur"] || (n.match(/\bi([3579])\b/) ? "Core i" + n.match(/\bi([3579])\b/)[1] : "");
+    if (cpu) chips.push(["cpu", cpu.replace(/^Intel /, "")]);
+    const gen = n.match(/\b(\d{1,2})\s*(th|e|eme|ème)\b/);
+    if (gen && !sp["Processeur"]) chips.push(["cpu", `${gen[1]}e gén.`]);
+    const store = sp["Stockage"] || (n.match(/\b(\d+)\s*(giga|go|gb)\b/) ? n.match(/\b(\d+)\s*(giga|go|gb)\b/)[1] + " Go"
+      : n.match(/\b(128|256|512)\b/) ? n.match(/\b(128|256|512)\b/)[1] + " Go"
+      : n.match(/\b(\d)\s*(t|to|tb)\b/) ? n.match(/\b(\d)\s*(t|to|tb)\b/)[1] + " To" : "");
+    if (store) chips.push(["drive", store]);
+    if (sp["Mémoire"]) chips.push(["drive", sp["Mémoire"] + " RAM"]);
+    if (/(\btouch\b|\btactile\b|x360|yoga|2 in 1)/.test(n) && !/non tactile/.test(n)) chips.push(["laptop", "Tactile"]);
+    return chips.slice(0, 3);
+  }
+  const chipsHTML = (p) => { const c = specChips(p); return c.length ? `<div class="chips">${c.map(([i, t]) => `<span class="chip">${ic(i, 13)}${esc(t)}</span>`).join("")}</div>` : ""; };
+  // Étiquette au-dessus du nom : la marque, sauf si le nom la contient déjà
+  const kicker = (p) => (p.brand && !niceName(p.name).toLowerCase().startsWith(p.brand.toLowerCase()) ? p.brand : catName(p.category));
+
   /* ---------- Illustrations produits (SVG) ---------- */
   function icon(type, color = "#0f014c") {
     const c = color, a = "#00d1c7";
@@ -140,7 +225,9 @@
     if (p.category === "audio" && /enceinte|speaker/i.test(p.name)) t = "speaker";
     return icon(t, p.color);
   };
-  const media = (p) => (p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : productIcon(p));
+  const media = (p) => (p.image
+    ? `<img src="${esc(p.image)}" alt="${esc(niceName(p.name))}" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ready')" onerror="this.parentNode.classList.add('ready','broken')">`
+    : productIcon(p));
 
   /* ---------- Panier / favoris ---------- */
   function saveCart() { store.set("cart", cart); updateBadges(); renderCartDrawer(); }
@@ -168,8 +255,8 @@
     wish = on ? wish.filter((w) => w !== id) : [...wish, id];
     store.set("wish", wish);
     updateBadges();
-    toast(on ? "Retiré des favoris" : "♥ Ajouté aux favoris");
-    $$(`[data-wish="${id}"]`).forEach((b) => { b.classList.toggle("on", !on); b.textContent = !on ? "♥" : "♡"; });
+    toast(on ? "Retiré des favoris" : "Ajouté aux favoris");
+    $$(`[data-wish="${id}"]`).forEach((b) => b.classList.toggle("on", !on));
     if (currentPath() === "/favoris") render();
   }
 
@@ -221,7 +308,7 @@
     const t = totals();
     const body = $("#cart-drawer-body");
     if (!t.items.length) {
-      body.innerHTML = `<div class="empty" style="box-shadow:none"><div class="big">🛒</div><p>Votre panier est vide.</p><a href="#/boutique" class="btn btn-primary" data-close>Découvrir la boutique</a></div>`;
+      body.innerHTML = `<div class="empty" style="box-shadow:none"><div class="big">${ic("cart", 44)}</div><p>Votre panier est vide.</p><a href="#/boutique" class="btn btn-primary" data-close>Découvrir la boutique</a></div>`;
       return;
     }
     body.innerHTML = `
@@ -238,7 +325,7 @@
     return `<div class="line">
       <a href="#/produit/${l.p.id}" class="thumb">${media(l.p)}</a>
       <div>
-        <a href="#/produit/${l.p.id}" class="line-title">${esc(l.p.name)}</a>
+        <a href="#/produit/${l.p.id}" class="line-title">${esc(niceName(l.p.name))}</a>
         <div class="hint">${money(l.p.price)}</div>
         <div class="line-meta">
           <div class="qty sm"><button data-dec="${l.p.id}" aria-label="Diminuer">−</button><input type="number" value="${l.qty}" min="1" max="${l.p.stock}" data-qty="${l.p.id}" aria-label="Quantité"><button data-inc="${l.p.id}" aria-label="Augmenter">+</button></div>
@@ -254,7 +341,7 @@
     const net = t.subtotal - t.reduction;
     const left = S.freeDeliveryFrom - net;
     const pct = Math.min(100, (net / S.freeDeliveryFrom) * 100);
-    return `<div><div class="hint">${left > 0 ? `Plus que <b>${money(left)}</b> pour la livraison gratuite 🚚` : `🎉 Livraison gratuite à Conakry débloquée !`}</div><div class="progress"><div style="width:${pct}%"></div></div></div>`;
+    return `<div><div class="hint">${left > 0 ? `Plus que <b>${money(left)}</b> pour la livraison gratuite` : `Livraison gratuite à Conakry débloquée !`}</div><div class="progress"><div style="width:${pct}%"></div></div></div>`;
   }
 
   /* ---------- Composants ---------- */
@@ -262,18 +349,19 @@
     const off = discount(p);
     const on = wish.includes(p.id);
     return `<article class="card">
-      <a href="#/produit/${p.id}" class="card-media" aria-label="${esc(p.name)}">
+      <a href="#/produit/${p.id}" class="card-media ${p.image ? "img-wait" : ""}" aria-label="${esc(niceName(p.name))}">
         ${media(p)}
         ${p.stock <= 0 ? `<span class="badge out">Rupture</span>` : p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}
         ${off ? `<span class="badge off">-${off}%</span>` : ""}
       </a>
-      <button class="wish ${on ? "on" : ""}" data-wish="${p.id}" aria-label="Ajouter aux favoris">${on ? "♥" : "♡"}</button>
+      <button class="wish ${on ? "on" : ""}" data-wish="${p.id}" aria-label="Ajouter aux favoris">${ic("heart", 18)}</button>
       <div class="card-body">
-        <div class="card-brand">${esc(p.brand)}</div>
-        <a href="#/produit/${p.id}" class="card-title">${esc(p.name)}</a>
+        <div class="card-brand">${esc(kicker(p))}</div>
+        <a href="#/produit/${p.id}" class="card-title">${esc(niceName(p.name))}</a>
+        ${chipsHTML(p)}
         ${p.rating ? `<div class="stars">${stars(p.rating)}<small>(${p.reviews})</small></div>` : ""}
         <div class="price"><strong>${money(p.price)}</strong>${p.oldPrice ? `<s>${money(p.oldPrice)}</s>` : ""}</div>
-        <button class="btn btn-dark" data-add="${p.id}" ${p.stock <= 0 ? "disabled" : ""}>${p.stock <= 0 ? "Indisponible" : "Ajouter au panier"}</button>
+        <button class="btn btn-dark" data-add="${p.id}" ${p.stock <= 0 ? "disabled" : ""}>${p.stock <= 0 ? "Indisponible" : `${ic("cart", 17)}Ajouter au panier`}</button>
       </div>
     </article>`;
   }
@@ -285,56 +373,91 @@
     const featured = PRODUCTS.filter((p) => p.featured).slice(0, 8);
     const deals = PRODUCTS.filter((p) => discount(p) > 0).sort((a, b) => discount(b) - discount(a)).slice(0, 4);
     const best = [...PRODUCTS].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.position - a.position).slice(0, 4);
-    const heroTiles = (featured.length >= 4 ? featured : PRODUCTS).slice(0, 4).map((p) => p.id);
-    const tile = (id) => { const p = byId(id); return p ? `<a href="#/produit/${p.id}" class="tile">${productIcon(p)}<strong>${esc(p.name)}</strong><span>${money(p.price)}</span></a>` : ""; };
+    // Vitrine : produits vedettes avec photo en priorité
+    const withPhoto = [...featured, ...PRODUCTS].filter((p, i, arr) => p.image && arr.findIndex((x) => x.id === p.id) === i);
+    const [star, ...side] = withPhoto.length ? withPhoto : PRODUCTS;
+    const count = (cat) => PRODUCTS.filter((p) => p.category === cat).length;
+    const catPhoto = (cat) => (PRODUCTS.find((p) => p.category === cat && p.featured && p.image) || PRODUCTS.find((p) => p.category === cat && p.image) || {}).image;
+    const trust = [
+      ["truck", "Livraison le jour même", "Partout à Conakry"],
+      ["wallet", "Paiement à la livraison", "Ou Orange Money / MoMo"],
+      ["shield", "Produits vérifiés", "Testés avant livraison"],
+      ["chat", "Conseil sur WhatsApp", "Réponse rapide 7j/7"]
+    ];
+    const stats = S.stats || [];
+    const brands = [...new Set(PRODUCTS.map((p) => p.brand).filter(Boolean))];
+    const showcase = (p, big) => p ? `<a href="#/produit/${p.id}" class="show-card ${big ? "big" : ""}">
+        <div class="show-img ${p.image ? "img-wait" : ""}">${media(p)}</div>
+        <div class="show-txt"><span>${esc(kicker(p))}</span><strong>${esc(niceName(p.name))}</strong><em>${money(p.price)}</em></div>
+      </a>` : "";
     document.title = `${S.name} – Ordinateurs portables et accessoires à Conakry`;
     return `
       <section class="hero">
         <div class="container hero-inner">
-          <div>
+          <div class="hero-copy">
+            <span class="eyebrow">${ic("pin", 14)} Conakry · Guinée</span>
             <h1>Votre ordinateur portable, <em>livré à Conakry</em>.</h1>
-            <p>Ordinateurs portables HP, Dell, Lenovo et accessoires informatiques. Prix justes, produits testés, paiement à la livraison ou par Mobile Money.</p>
+            <p>Ordinateurs portables HP, Dell, Lenovo et accessoires informatiques. Prix justes, paiement à la livraison ou par Mobile Money.</p>
             <div class="hero-actions">
-              <a href="#/boutique" class="btn btn-primary">Voir la boutique</a>
-              <a href="${waLink(`Bonjour ${S.name}, j'ai une question sur vos produits.`)}" target="_blank" rel="noopener" class="btn btn-wa">Commander sur WhatsApp</a>
+              <a href="#/boutique" class="btn btn-primary">${ic("bag", 18)}Voir la boutique</a>
+              <a href="${waLink(`Bonjour ${S.name}, j'ai une question sur vos produits.`)}" target="_blank" rel="noopener" class="btn btn-ghost">${ic("chat", 18)}Conseil sur WhatsApp</a>
             </div>
+            ${stats.length ? `<div class="hero-stats">${stats.map((x) => `<div><strong>${esc(x.value)}</strong><span>${esc(x.label)}</span></div>`).join("")}</div>` : ""}
           </div>
-          <div class="hero-visual">${heroTiles.map(tile).join("")}</div>
+          <div class="hero-show">
+            ${showcase(star, true)}
+            <div class="show-side">${side.slice(0, 2).map((p) => showcase(p, false)).join("")}</div>
+          </div>
         </div>
       </section>
+
       <div class="container">
-        <div class="trust">
-          <div class="trust-item"><span class="ic">🚚</span><div><strong>Livraison rapide</strong><small>Le jour même à Conakry</small></div></div>
-          <div class="trust-item"><span class="ic">💵</span><div><strong>Paiement à la livraison</strong><small>Ou Orange Money / MoMo</small></div></div>
-          <div class="trust-item"><span class="ic">🛡️</span><div><strong>Produits garantis</strong><small>Jusqu'à 12 mois</small></div></div>
-          <div class="trust-item"><span class="ic">💬</span><div><strong>Service client</strong><small>Sur WhatsApp 7j/7</small></div></div>
-        </div>
+        <div class="trust">${trust.map(([i, t, d]) => `<div class="trust-item"><span class="ic">${ic(i, 22)}</span><div><strong>${t}</strong><small>${d}</small></div></div>`).join("")}</div>
       </div>
 
       <section class="section"><div class="container">
-        <div class="section-head"><div><h2>Nos catégories</h2><p>Tout l'univers high-tech au même endroit</p></div></div>
-        <div class="cats">${CATEGORIES.map((c) => `<a href="#/boutique?cat=${c.id}" class="cat-card"><div class="cat-ic">${icon(c.icon)}</div><span>${esc(c.name)}</span></a>`).join("")}</div>
+        <div class="section-head"><div><h2>Nos rayons</h2><p>Ordinateurs portables et accessoires pour votre poste de travail</p></div></div>
+        <div class="cat-banners">${CATEGORIES.map((c) => { const img = catPhoto(c.id); return `
+          <a href="#/boutique?cat=${c.id}" class="cat-banner">
+            <div class="cat-banner-txt">
+              <span class="cat-count">${count(c.id)} produit${count(c.id) > 1 ? "s" : ""}</span>
+              <h3>${esc(c.name)}</h3>
+              <span class="cat-link">Découvrir ${ic("arrow", 16)}</span>
+            </div>
+            <div class="cat-banner-img ${img ? "img-wait" : ""}">${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ready')" onerror="this.parentNode.classList.add('ready','broken')">` : icon(c.icon)}</div>
+          </a>`; }).join("")}</div>
       </div></section>
 
       <section class="section" style="padding-top:0"><div class="container">
-        <div class="section-head"><div><h2>Produits vedettes</h2><p>Sélectionnés pour vous</p></div><a href="#/boutique" class="link">Tout voir →</a></div>
+        <div class="section-head"><div><h2>Produits vedettes</h2><p>Nos meilleures ventes du moment</p></div><a href="#/boutique" class="link">Tout voir ${ic("arrow", 16)}</a></div>
         <div class="grid">${featured.map(cardHTML).join("")}</div>
       </div></section>
 
-      <section class="section" style="padding-top:0"><div class="container banner">
-        ${deals.length
-          ? `<div class="b1"><h3>Jusqu'à -${Math.max(...deals.map(discount))}% sur une sélection</h3><p>Des prix cassés sur une sélection de produits. Stocks limités !</p><a href="#/boutique?promo=1" class="btn">Voir les promos</a></div>`
-          : `<div class="b1"><h3>Ordinateurs portables professionnels 💻</h3><p>HP, Dell, Lenovo… des machines solides pour le travail et les études, testées avant livraison.</p><a href="#/boutique?cat=ordinateurs" class="btn">Voir les ordinateurs</a></div>`}
-        <div class="b2"><h3>Équipez votre poste de travail</h3><p>Souris, claviers, sacs, supports, disques et câbles pour votre PC.</p><a href="#/boutique?cat=accessoires" class="btn">Voir les accessoires</a></div>
-      </div></section>
-
       ${deals.length ? `<section class="section" style="padding-top:0"><div class="container">
-        <div class="section-head"><div><h2>🔥 Meilleures offres</h2><p>Les plus grosses réductions du moment</p></div><a href="#/boutique?promo=1" class="link">Toutes les promos →</a></div>
+        <div class="section-head"><div><h2>Offres du moment</h2><p>Les plus grosses réductions</p></div><a href="#/boutique?promo=1" class="link">Toutes les promos ${ic("arrow", 16)}</a></div>
         <div class="grid">${deals.map(cardHTML).join("")}</div>
       </div></section>` : ""}
 
-      <section class="section" style="padding-top:0"><div class="container">
-        <div class="section-head"><div><h2>Nouveautés</h2><p>Les derniers arrivages</p></div></div>
+      <section class="section why"><div class="container">
+        <div class="why-grid">
+          <div class="why-copy">
+            <span class="eyebrow dark">Pourquoi Venips</span>
+            <h2>Des ordinateurs fiables, un vendeur que vous pouvez joindre</h2>
+            <p>Nous sélectionnons des ordinateurs portables professionnels de grandes marques et nous les livrons partout à Conakry. Vous ne payez qu'à la réception, et notre équipe reste joignable sur WhatsApp avant et après l'achat.</p>
+            <a href="#/a-propos" class="link">En savoir plus ${ic("arrow", 16)}</a>
+          </div>
+          <div class="why-points">
+            <div>${ic("check", 22)}<div><strong>Vérifiés avant livraison</strong><span>Chaque appareil est contrôlé avant de vous être remis.</span></div></div>
+            <div>${ic("wallet", 22)}<div><strong>Zéro risque au paiement</strong><span>Espèces à la livraison, Orange Money ou MTN MoMo.</span></div></div>
+            <div>${ic("truck", 22)}<div><strong>Livraison rapide</strong><span>Le jour même dans la plupart des communes de Conakry.</span></div></div>
+            <div>${ic("chat", 22)}<div><strong>Un vrai service client</strong><span>Une question, un souci ? On vous répond sur WhatsApp.</span></div></div>
+          </div>
+        </div>
+        ${brands.length ? `<div class="brands"><span>Les marques que nous proposons</span><div>${brands.map((b) => `<b>${esc(b)}</b>`).join("")}</div></div>` : ""}
+      </div></section>
+
+      <section class="section"><div class="container">
+        <div class="section-head"><div><h2>Nouveautés</h2><p>Les derniers arrivages</p></div><a href="#/boutique" class="link">Tout voir ${ic("arrow", 16)}</a></div>
         <div class="grid">${best.map(cardHTML).join("")}</div>
       </div></section>`;
   }
@@ -392,7 +515,7 @@
         </aside>
         <div>
           <div class="toolbar">
-            <button class="btn btn-outline filter-toggle" id="filter-toggle">⚙︎ Filtres</button>
+            <button class="btn btn-outline filter-toggle" id="filter-toggle">${ic("filter", 16)}Filtres</button>
             <span class="hint">${list.length} produit${list.length > 1 ? "s" : ""}</span>
             <select id="sort" aria-label="Trier">
               <option value="pertinence" ${sort === "pertinence" ? "selected" : ""}>Trier : pertinence</option>
@@ -401,7 +524,7 @@
               <option value="promo" ${sort === "promo" ? "selected" : ""}>Plus grosses remises</option>
             </select>
           </div>
-          ${list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>` : `<div class="empty"><div class="big">🔍</div><h3>Aucun produit trouvé</h3><p class="hint">Essayez d'autres mots-clés ou retirez des filtres.</p><p><a href="${waLink(`Bonjour, je cherche : ${q || "un produit"}. Est-ce disponible ?`)}" target="_blank" rel="noopener" class="btn btn-wa">Demander sur WhatsApp</a></p></div>`}
+          ${list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>` : `<div class="empty"><div class="big">${ic("search", 44)}</div><h3>Aucun produit trouvé</h3><p class="hint">Essayez d'autres mots-clés ou retirez des filtres.</p><p><a href="${waLink(`Bonjour, je cherche : ${q || "un produit"}. Est-ce disponible ?`)}" target="_blank" rel="noopener" class="btn btn-wa">Demander sur WhatsApp</a></p></div>`}
         </div>
       </div>`;
   }
@@ -415,20 +538,21 @@
     const gallery = p.image ? [p.image, ...(p.images || [])] : [];
     currentGallery = gallery;
     galleryIndex = 0;
-    const stockHTML = p.stock <= 0 ? `<div class="stock no">✕ Rupture de stock</div>` : p.stock <= 5 ? `<div class="stock low">⚠ Plus que ${p.stock} en stock – commandez vite</div>` : `<div class="stock ok">✓ En stock, prêt à être livré</div>`;
-    document.title = `${p.name} – ${S.name}`;
+    const stockHTML = p.stock <= 0 ? `<div class="stock no">${ic("close", 16)}Rupture de stock</div>` : p.stock <= 5 ? `<div class="stock low">${ic("alert", 16)}Plus que ${p.stock} en stock – commandez vite</div>` : `<div class="stock ok">${ic("check", 16)}En stock, prêt à être livré</div>`;
+    document.title = `${niceName(p.name)} – ${S.name}`;
     return `
-      <div class="container page-head">${crumbs([["Boutique", "#/boutique"], [catName(p.category), `#/boutique?cat=${p.category}`], [p.name]])}</div>
+      <div class="container page-head">${crumbs([["Boutique", "#/boutique"], [catName(p.category), `#/boutique?cat=${p.category}`], [niceName(p.name)]])}</div>
       <div class="container product">
         <div>
           <div class="gallery ${gallery.length > 1 ? "has-thumbs" : ""}">
             ${gallery.length > 1 ? `<div class="thumbs">${gallery.map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-img="${i}" aria-label="Voir l'image ${i + 1}"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer" onerror="this.closest('.thumb').remove()"></button>`).join("")}</div>` : ""}
-            <div class="product-media ${gallery.length ? "zoomable" : ""}" id="main-media" ${gallery.length ? "data-open-viewer" : ""}>${media(p)}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}${gallery.length ? `<span class="zoom-hint">🔍 Cliquez pour agrandir</span>` : ""}</div>
+            <div class="product-media ${gallery.length ? "zoomable img-wait" : ""}" id="main-media" ${gallery.length ? "data-open-viewer" : ""}>${media(p)}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ""}${gallery.length ? `<span class="zoom-hint">${ic("zoom", 14)}Cliquez pour agrandir</span>` : ""}</div>
           </div>
         </div>
         <div class="product-info">
-          <div class="card-brand">${esc(p.brand)}</div>
-          <h1>${esc(p.name)}</h1>
+          <div class="card-brand">${esc(kicker(p))}</div>
+          <h1>${esc(niceName(p.name))}</h1>
+          ${chipsHTML(p)}
           ${p.rating ? `<div class="stars">${stars(p.rating)}<small>${p.rating}/5 · ${p.reviews} avis</small></div>` : ""}
           <div class="price" style="margin-top:12px"><strong>${money(p.price)}</strong>${p.oldPrice ? `<s>${money(p.oldPrice)}</s><span class="saving">-${off}% · Économisez ${money(p.oldPrice - p.price)}</span>` : ""}</div>
           ${stockHTML}
@@ -436,24 +560,24 @@
           ${p.stock > 0 ? `
           <div class="buy-row">
             <div class="qty"><button data-pdec aria-label="Diminuer">−</button><input type="number" id="pqty" value="1" min="1" max="${p.stock}" aria-label="Quantité"><button data-pinc aria-label="Augmenter">+</button></div>
-            <button class="btn btn-primary" data-padd="${p.id}">🛒 Ajouter au panier</button>
+            <button class="btn btn-primary" data-padd="${p.id}">${ic("cart", 18)}Ajouter au panier</button>
           </div>
           <div class="buy-row" style="margin-top:0">
             <button class="btn btn-dark" data-pbuy="${p.id}">Acheter maintenant</button>
-            <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, je suis intéressé(e) par : ${p.name} (${money(p.price)}). Est-il disponible ?`)}">WhatsApp</a>
+            <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, je suis intéressé(e) par : ${niceName(p.name)} (${money(p.price)}). Est-il disponible ?`)}">${ic("chat", 18)}WhatsApp</a>
           </div>` : `<a class="btn btn-wa btn-block" target="_blank" rel="noopener" href="${waLink(`Bonjour, quand le produit ${p.name} sera-t-il de nouveau disponible ?`)}">Être prévenu du retour en stock</a>`}
-          <button class="btn btn-outline btn-block" data-wish="${p.id}" style="margin-bottom:16px">${on ? "♥ Dans vos favoris" : "♡ Ajouter aux favoris"}</button>
+          <button class="btn btn-outline btn-block wish-btn ${on ? "on" : ""}" data-wish="${p.id}" style="margin-bottom:16px">${ic("heart", 18)}${on ? "Dans vos favoris" : "Ajouter aux favoris"}</button>
           <div class="perks">
-            <div>🚚 Livraison à Conakry le jour même · dès ${money(Math.min(...S.deliveryZones.filter((z) => z.fee > 0).map((z) => z.fee)))}</div>
-            <div>💵 Paiement à la livraison, Orange Money ou MTN MoMo</div>
-            <div>🛡️ Garantie : ${esc(p.specs["Garantie"] || "selon produit")}</div>
-            <div>🔄 Échange sous 7 jours en cas de défaut</div>
+            <div>${ic("truck")}<span>Livraison à Conakry le jour même · dès ${money(Math.min(...S.deliveryZones.filter((z) => z.fee > 0).map((z) => z.fee)))}</span></div>
+            <div>${ic("wallet")}<span>Paiement à la livraison, Orange Money ou MTN MoMo</span></div>
+            <div>${ic("shield")}<span>Garantie : ${esc(p.specs["Garantie"] || "selon produit")}</span></div>
+            <div>${ic("refresh")}<span>Échange sous 7 jours en cas de défaut</span></div>
           </div>
         </div>
       </div>
       <section class="container" style="padding-bottom:32px">
         <h2>Caractéristiques</h2>
-        <table class="specs">${Object.entries(p.specs).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}<tr><th>Marque</th><td>${esc(p.brand)}</td></tr><tr><th>Catégorie</th><td>${esc(catName(p.category))}</td></tr></table>
+        <table class="specs">${Object.entries(p.specs).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}${p.brand ? `<tr><th>Marque</th><td>${esc(p.brand)}</td></tr>` : ""}<tr><th>Catégorie</th><td>${esc(catName(p.category))}</td></tr></table>
       </section>
       ${related.length ? `<section class="section" style="padding-top:8px"><div class="container"><div class="section-head"><h2>Vous aimerez aussi</h2></div><div class="grid">${related.map(cardHTML).join("")}</div></div></section>` : ""}`;
   }
@@ -462,12 +586,12 @@
     const t = totals();
     document.title = `Panier – ${S.name}`;
     if (!t.items.length) {
-      return `<div class="container page-head"><h1>Mon panier</h1></div><div class="container" style="padding-bottom:48px"><div class="empty"><div class="big">🛒</div><h3>Votre panier est vide</h3><p class="hint">Ajoutez des produits pour passer commande.</p><a href="#/boutique" class="btn btn-primary">Continuer mes achats</a></div></div>`;
+      return `<div class="container page-head"><h1>Mon panier</h1></div><div class="container" style="padding-bottom:48px"><div class="empty"><div class="big">${ic("cart", 44)}</div><h3>Votre panier est vide</h3><p class="hint">Ajoutez des produits pour passer commande.</p><a href="#/boutique" class="btn btn-primary">Continuer mes achats</a></div></div>`;
     }
     return `
       <div class="container page-head">${crumbs([["Panier"]])}<h1>Mon panier (${t.count})</h1></div>
       <div class="container cart-layout">
-        <div class="panel">${t.items.map(lineHTML).join("")}<a href="#/boutique" class="link" style="display:inline-block;margin-top:12px">← Continuer mes achats</a></div>
+        <div class="panel">${t.items.map(lineHTML).join("")}<a href="#/boutique" class="link" style="display:inline-flex;align-items:center;gap:6px;margin-top:12px">${ic("back", 16)}Continuer mes achats</a></div>
         <div class="panel" style="align-self:start">
           <h3>Récapitulatif</h3>
           ${summaryHTML(t)}
@@ -509,7 +633,7 @@
       <form class="container cart-layout" id="checkout" novalidate>
         <div class="panel">
           ${!db ? "" : user
-            ? `<div class="account-note">👤 Connecté(e) : <b>${esc(user.email)}</b> — cette commande sera ajoutée à votre compte.</div>`
+            ? `<div class="account-note">${ic("user", 16)} Connecté(e) : <b>${esc(user.email)}</b> — cette commande sera ajoutée à votre compte.</div>`
             : `<div class="account-note">Vous avez un compte ? <a href="#/compte" class="link">Connectez-vous</a> pour retrouver vos commandes. Vous pouvez aussi commander sans compte.</div>`}
           <h3 class="steps-title"><b>1</b> Vos coordonnées</h3>
           <div class="form-grid">
@@ -634,11 +758,11 @@
     const o = orders.find((x) => x.id === id);
     if (!o) return pageNotFound();
     document.title = `Commande ${o.id} – ${S.name}`;
-    const payInfo = o.paymentId === "orange" ? `<p>💳 Envoyez <b>${money(o.total)}</b> par Orange Money au <b>${esc(S.orangeMoneyNumber)}</b> puis partagez la capture sur WhatsApp.</p>`
-      : o.paymentId === "mtn" ? `<p>💳 Envoyez <b>${money(o.total)}</b> par MTN MoMo au <b>${esc(S.mtnMoneyNumber)}</b> puis partagez la capture sur WhatsApp.</p>`
-      : `<p>💵 Préparez <b>${money(o.total)}</b> en espèces pour la livraison.</p>`;
+    const payInfo = o.paymentId === "orange" ? `<p>${ic("phone", 16)} Envoyez <b>${money(o.total)}</b> par Orange Money au <b>${esc(S.orangeMoneyNumber)}</b> puis partagez la capture sur WhatsApp.</p>`
+      : o.paymentId === "mtn" ? `<p>${ic("phone", 16)} Envoyez <b>${money(o.total)}</b> par MTN MoMo au <b>${esc(S.mtnMoneyNumber)}</b> puis partagez la capture sur WhatsApp.</p>`
+      : `<p>${ic("wallet", 16)} Préparez <b>${money(o.total)}</b> en espèces pour la livraison.</p>`;
     return `<div class="container"><div class="panel success">
-      <div class="check">✓</div>
+      <div class="check">${ic("check", 36)}</div>
       <h1>Merci ${esc(o.customer.name.split(" ")[0])} !</h1>
       <p>Votre commande <b>${o.id}</b> a été enregistrée. Si WhatsApp ne s'est pas ouvert, cliquez sur le bouton ci-dessous pour nous l'envoyer — nous la confirmerons rapidement.</p>
       <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(orderMessage(o))}">Envoyer ma commande sur WhatsApp</a>
@@ -663,7 +787,7 @@
           <div class="order-head"><span>${o.id}</span><span>${new Date(o.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</span></div>
           <p class="hint" style="margin:6px 0">${o.items.map((i) => `${i.qty} × ${esc(i.name)}`).join(" · ")}</p>
           <div class="order-head"><span>${money(o.total)} · ${esc(o.payment)}</span><a class="link" target="_blank" rel="noopener" href="${waLink(`Bonjour, je souhaite suivre ma commande ${o.id}.`)}">Suivre sur WhatsApp →</a></div>
-        </div>`).join("") : `<div class="empty" style="box-shadow:none"><div class="big">📦</div><p>Aucune commande passée depuis cet appareil.</p><a href="#/boutique" class="btn btn-primary">Commencer mes achats</a></div>`}
+        </div>`).join("") : `<div class="empty" style="box-shadow:none"><div class="big">${ic("box", 44)}</div><p>Aucune commande passée depuis cet appareil.</p><a href="#/boutique" class="btn btn-primary">Commencer mes achats</a></div>`}
       </div></div>`;
   }
 
@@ -706,9 +830,9 @@
     }
     setTimeout(loadMyOrders);
     const p = profile || {};
-    return `${head(`Bonjour ${esc((p.full_name || "").split(" ")[0] || "")} 👋`)}
+    return `${head(`Bonjour ${esc((p.full_name || "").split(" ")[0] || "")}`)}
       ${isAdmin ? `<div class="container"><div class="admin-banner">
-        <div><strong>🔐 Vous êtes administrateur</strong><span>Gérez les commandes, les produits, les prix, les images et les clients.</span></div>
+        <div><strong>${ic("lock", 18)} Vous êtes administrateur</strong><span>Gérez les commandes, les produits, les prix, les images et les clients.</span></div>
         <a href="admin.html" class="btn btn-primary">Ouvrir l'espace admin →</a>
       </div></div>` : ""}
       <div class="container"><div id="acc-msg"></div></div>
@@ -743,7 +867,7 @@
         <p class="hint" style="margin:6px 0">${new Date(o.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} · ${o.items.map((i) => `${i.qty} × ${esc(i.name)}`).join(" · ")}</p>
         <div class="order-head"><span>${money(o.total)} · ${esc(o.payment)}</span><a class="link" target="_blank" rel="noopener" href="${waLink(`Bonjour, je souhaite suivre ma commande ${o.id}.`)}">Suivre sur WhatsApp →</a></div>
       </div>`).join("")
-      : `<div class="empty" style="box-shadow:none;padding:30px 0"><div class="big">📦</div><p>Aucune commande pour le moment.</p><a href="#/boutique" class="btn btn-primary">Découvrir la boutique</a></div>`;
+      : `<div class="empty" style="box-shadow:none;padding:30px 0"><div class="big">${ic("box", 44)}</div><p>Aucune commande pour le moment.</p><a href="#/boutique" class="btn btn-primary">Découvrir la boutique</a></div>`;
   }
 
   function accMsg(html, kind = "") {
@@ -807,7 +931,7 @@
     const list = wish.map(byId).filter(Boolean);
     document.title = `Favoris – ${S.name}`;
     return `<div class="container page-head">${crumbs([["Favoris"]])}<h1>Mes favoris</h1></div>
-      <div class="container" style="padding-bottom:48px">${list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>` : `<div class="empty"><div class="big">♡</div><h3>Aucun favori pour le moment</h3><p class="hint">Cliquez sur ♡ pour garder un produit de côté.</p><a href="#/boutique" class="btn btn-primary">Parcourir la boutique</a></div>`}</div>`;
+      <div class="container" style="padding-bottom:48px">${list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>` : `<div class="empty"><div class="big">${ic("heart", 44)}</div><h3>Aucun favori pour le moment</h3><p class="hint">Cliquez sur le cœur pour garder un produit de côté.</p><a href="#/boutique" class="btn btn-primary">Parcourir la boutique</a></div>`}</div>`;
   }
 
   const content = (title, html) => { document.title = `${title} – ${S.name}`; return `<div class="container page-head">${crumbs([[title]])}<h1>${title}</h1></div><div class="container"><div class="prose">${html}</div></div>`; };
@@ -831,7 +955,7 @@
     return content("Livraison & retours", `
       <h2>Zones et tarifs de livraison</h2>
       <table class="zones"><tr><th>Zone</th><th>Frais</th><th>Délai</th></tr>${S.deliveryZones.map((z) => `<tr><td>${esc(z.name)}</td><td>${z.fee ? money(z.fee) : "Gratuit"}</td><td>${esc(z.delay)}</td></tr>`).join("")}</table>
-      ${S.freeDeliveryFrom ? `<p>🎉 <b>Livraison gratuite</b> pour toute commande à partir de <b>${money(S.freeDeliveryFrom)}</b> (hors intérieur du pays).</p>` : ""}
+      ${S.freeDeliveryFrom ? `<p><b>Livraison gratuite</b> pour toute commande à partir de <b>${money(S.freeDeliveryFrom)}</b> (hors intérieur du pays).</p>` : ""}
       <h2>Comment ça marche ?</h2>
       <ol><li>Vous passez commande sur le site.</li><li>Notre équipe vous contacte sur WhatsApp pour confirmer.</li><li>Le livreur vous appelle avant d'arriver.</li><li>Vous vérifiez le produit puis vous payez (si paiement à la livraison).</li></ol>
       <h2>Retours et échanges</h2>
@@ -856,11 +980,11 @@
     return `<div class="container page-head">${crumbs([["Contact"]])}<h1>Contactez-nous</h1></div>
       <div class="container contact-grid" style="padding-bottom:48px">
         <div class="panel info-list">
-          <div><span class="ic">💬</span><div><b>WhatsApp</b><br><a class="link" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">${esc(S.phoneDisplay)}</a></div></div>
-          <div><span class="ic">📞</span><div><b>Téléphone</b><br><a href="tel:+${S.whatsapp}">${esc(S.phoneDisplay)}</a></div></div>
-          <div><span class="ic">✉️</span><div><b>Email</b><br><a href="mailto:${esc(S.email)}">${esc(S.email)}</a></div></div>
-          <div><span class="ic">📍</span><div><b>Adresse</b><br>${esc(S.address)}</div></div>
-          <div><span class="ic">🕘</span><div><b>Horaires</b><br>${esc(S.hours)}</div></div>
+          <div><span class="ic">${ic("chat", 22)}</span><div><b>WhatsApp</b><br><a class="link" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">${esc(S.phoneDisplay)}</a></div></div>
+          <div><span class="ic">${ic("phone", 22)}</span><div><b>Téléphone</b><br><a href="tel:+${S.whatsapp}">${esc(S.phoneDisplay)}</a></div></div>
+          <div><span class="ic">${ic("mail", 22)}</span><div><b>Email</b><br><a href="mailto:${esc(S.email)}">${esc(S.email)}</a></div></div>
+          <div><span class="ic">${ic("pin", 22)}</span><div><b>Adresse</b><br>${esc(S.address)}</div></div>
+          <div><span class="ic">${ic("clock", 22)}</span><div><b>Horaires</b><br>${esc(S.hours)}</div></div>
         </div>
         <form class="panel" id="contact-form">
           <h3>Envoyez-nous un message</h3>
@@ -887,7 +1011,7 @@
 
   function pageNotFound() {
     document.title = `Page introuvable – ${S.name}`;
-    return `<div class="container" style="padding:48px 16px"><div class="empty"><div class="big">🤔</div><h2>Page introuvable</h2><p class="hint">Le lien est peut-être incorrect ou le produit n'existe plus.</p><a href="#/" class="btn btn-primary">Retour à l'accueil</a></div></div>`;
+    return `<div class="container" style="padding:48px 16px"><div class="empty"><div class="big">${ic("sad", 44)}</div><h2>Page introuvable</h2><p class="hint">Le lien est peut-être incorrect ou le produit n'existe plus.</p><a href="#/" class="btn btn-primary">Retour à l'accueil</a></div></div>`;
   }
 
 
@@ -933,7 +1057,7 @@
     }
     const n = currentGallery.length;
     v.innerHTML = `
-      <button class="viewer-close" data-viewer="close" aria-label="Fermer">✕</button>
+      <button class="viewer-close" data-viewer="close" aria-label="Fermer">${ic("close", 22)}</button>
       ${n > 1 ? `<button class="viewer-nav prev" data-viewer="prev" aria-label="Image précédente">‹</button><button class="viewer-nav next" data-viewer="next" aria-label="Image suivante">›</button>` : ""}
       <div class="viewer-stage"><img id="viewer-img" alt="" referrerpolicy="no-referrer"></div>
       ${n > 1 ? `<div class="viewer-thumbs">${currentGallery.map((u, k) => `<button data-viewer-i="${k}" aria-label="Image ${k + 1}"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer"></button>`).join("")}</div>` : ""}
@@ -1024,7 +1148,7 @@
     if (!el) return;
     const d = el.dataset;
     if (d.add) addToCart(d.add);
-    else if (d.wish) { e.preventDefault(); toggleWish(d.wish); if (currentPath().startsWith("/produit")) el.textContent = wish.includes(d.wish) ? "♥ Dans vos favoris" : "♡ Ajouter aux favoris"; }
+    else if (d.wish) { e.preventDefault(); toggleWish(d.wish); if (currentPath().startsWith("/produit") && el.classList.contains("btn")) el.innerHTML = `${ic("heart", 18)}${wish.includes(d.wish) ? "Dans vos favoris" : "Ajouter aux favoris"}`; }
     else if (d.inc) { const l = cart.find((x) => x.id === d.inc); setQty(d.inc, l.qty + 1); refreshCartViews(); }
     else if (d.dec) { const l = cart.find((x) => x.id === d.dec); setQty(d.dec, l.qty - 1); refreshCartViews(); }
     else if (d.remove) { removeFromCart(d.remove); refreshCartViews(); toast("Produit retiré du panier"); }
@@ -1134,23 +1258,23 @@
       ? `<img class="logo-img" src="${esc(S.logoImage)}" alt="${esc(S.name)}">`
       : `<span class="logo-mark">${esc(S.logoText)}</span><span>${esc(first)}${rest.length ? ` <span class="accent">${esc(rest.join(" "))}</span>` : ""}</span>`;
     $("#logo").innerHTML = logo;
-    $("#topbar-phone").textContent = `📞 ${S.phoneDisplay} · ${S.hours.split("·")[0].trim()}`;
-    $("#catnav").innerHTML = `<div class="catnav-inner"><a href="#/boutique">Tout</a><a href="#/boutique?promo=1">🔥 Promos</a>${CATEGORIES.map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}</div>`;
+    $("#topbar-phone").innerHTML = `${ic("phone", 14)} ${esc(S.phoneDisplay)} <span class="sep">·</span> ${ic("clock", 14)} ${esc(S.hours.split("·")[0].trim())}`;
+    $("#catnav").innerHTML = `<div class="catnav-inner"><a href="#/boutique">Tout</a><a href="#/boutique?promo=1">${ic("tag", 15)}Promos</a>${CATEGORIES.map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}</div>`;
     $("#mobile-menu-body").innerHTML = [
-      ["#/", "🏠 Accueil"], ["#/boutique", "🛍️ Boutique"], ["#/boutique?promo=1", "🔥 Promotions"],
-      ...CATEGORIES.map((c) => [`#/boutique?cat=${c.id}`, `　${c.name}`]),
-      ["#/compte", "👤 Mon compte"], ["#/favoris", "♡ Mes favoris"], ["#/mes-commandes", "📦 Mes commandes"], ["#/livraison", "🚚 Livraison"], ["#/faq", "❓ FAQ"], ["#/contact", "💬 Contact"]
-    ].map(([h, l]) => `<a class="mm-link" href="${h}">${esc(l)}</a>`).join("");
+      ["#/", "home", "Accueil"], ["#/boutique", "bag", "Boutique"], ["#/boutique?promo=1", "tag", "Promotions"],
+      ...CATEGORIES.map((c) => [`#/boutique?cat=${c.id}`, c.icon === "laptop" ? "laptop" : "mouse", c.name, true]),
+      ["#/compte", "user", "Mon compte"], ["#/favoris", "heart", "Mes favoris"], ["#/mes-commandes", "box", "Mes commandes"], ["#/livraison", "truck", "Livraison"], ["#/faq", "help", "FAQ"], ["#/contact", "chat", "Contact"]
+    ].map(([h, i, l, sub]) => `<a class="mm-link ${sub ? "sub" : ""}" href="${h}">${ic(i, 18)}${esc(l)}</a>`).join("");
     $("#wa-float").href = waLink(`Bonjour ${S.name} !`);
     const socials = Object.entries(S.socials).filter(([, v]) => v);
     $("#footer").innerHTML = `
-      <div><a href="#/" class="logo">${logo}</a><p>${esc(S.tagline)}.</p><p>📍 ${esc(S.address)}</p><p>📞 ${esc(S.phoneDisplay)}</p>
+      <div><a href="#/" class="logo">${logo}</a><p>${esc(S.tagline)}.</p><p class="f-line">${ic("pin", 16)}${esc(S.address)}</p><p class="f-line">${ic("phone", 16)}${esc(S.phoneDisplay)}</p><p class="f-line">${ic("mail", 16)}${esc(S.email)}</p>
         <div class="pay-badges"><span>Orange Money</span><span>MTN MoMo</span><span>Espèces</span></div></div>
       <div><h4>Boutique</h4>${CATEGORIES.slice(0, 6).map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}<a href="#/boutique?promo=1">Promotions</a></div>
       <div><h4>Aide</h4><a href="#/compte">Mon compte</a><a href="#/livraison">Livraison & retours</a><a href="#/faq">FAQ</a><a href="#/mes-commandes">Suivre ma commande</a><a href="#/contact">Contact</a><a href="#/cgv">CGV</a><a href="#/a-propos">À propos</a></div>
-      <div><h4>Besoin d'aide ?</h4><p>Notre équipe vous répond sur WhatsApp.</p><a class="btn btn-wa" style="display:inline-flex;color:#fff" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">Écrire sur WhatsApp</a>
+      <div><h4>Besoin d'aide ?</h4><p>Notre équipe vous répond sur WhatsApp.</p><a class="btn btn-wa" style="display:inline-flex;color:#fff" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">${ic("chat", 18)}Écrire sur WhatsApp</a><p class="f-line" style="margin-top:12px">${ic("clock", 16)}${esc(S.hours)}</p>
         ${socials.length ? `<p style="margin-top:12px">${socials.map(([k, v]) => `<a href="${esc(v)}" target="_blank" rel="noopener" style="display:inline;margin-right:10px">${k}</a>`).join("")}</p>` : ""}</div>`;
-    $("#footer-bottom").innerHTML = `<span>© ${new Date().getFullYear()} ${esc(S.name)}. Tous droits réservés.</span><span>${esc(S.hours)}</span>`;
+    $("#footer-bottom").innerHTML = `<span>© ${new Date().getFullYear()} ${esc(S.name)}. Tous droits réservés.</span><span class="f-links"><a href="#/cgv">CGV</a><a href="#/livraison">Livraison & retours</a><a href="#/contact">Contact</a></span>`;
   }
 
   // Silhouettes animées affichées pendant le tout premier chargement

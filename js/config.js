@@ -22,6 +22,14 @@ window.STORE = {
 
   currency: "GNF",
 
+  // Chiffres affichés dans la bannière d'accueil (modifiables)
+  // 915 articles vendus du 30 mars au 5 novembre 2026 d'après le logiciel de gestion
+  stats: [
+    { value: "900+", label: "articles vendus depuis mars 2026" },
+    { value: "Jour même", label: "livraison à Conakry" },
+    { value: "7j/7", label: "conseil sur WhatsApp" }
+  ],
+
   // Livraison gratuite à partir de ce montant (GNF). Mettre 0 pour désactiver.
   freeDeliveryFrom: 5000000,
 
