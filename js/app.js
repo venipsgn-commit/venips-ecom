@@ -134,6 +134,8 @@
   let wish = store.get("wish", []);
   let promo = store.get("promo", "");
   let promoPct = store.get("promoPct", 0);
+  const MAX_QTY = 10;           // limite par produit et par commande (vérifiée aussi par la base)
+  let checkoutError = "";       // dernier refus de commande, affiché sur la page Commande
   let launchPct = store.get("launchPct", 0);
   let orders = store.get("orders", []);
 
@@ -260,8 +262,8 @@
     if (!p || p.stock <= 0) return toast("Produit en rupture de stock");
     const line = cart.find((l) => l.id === id);
     const current = line ? line.qty : 0;
-    const next = Math.min(current + qty, p.stock);
-    if (next === current) return toast(`Stock maximum atteint (${p.stock})`);
+    const next = Math.min(current + qty, p.stock, MAX_QTY);
+    if (next === current) return toast(p.stock > MAX_QTY && current >= MAX_QTY ? `Maximum ${MAX_QTY} exemplaires par commande` : `Stock maximum atteint (${p.stock})`);
     if (line) line.qty = next; else cart.push({ id, qty: next });
     saveCart();
     toast(`✓ ${niceName(p.name)} ajouté au panier`);
@@ -270,7 +272,7 @@
     const p = byId(id);
     const line = cart.find((l) => l.id === id);
     if (!line || !p) return;
-    line.qty = Math.max(1, Math.min(qty, p.stock));
+    line.qty = Math.max(1, Math.min(qty, p.stock, MAX_QTY));
     saveCart();
   }
   function removeFromCart(id) { cart = cart.filter((l) => l.id !== id); saveCart(); }
@@ -352,7 +354,7 @@
         <a href="#/produit/${l.p.id}" class="line-title">${esc(niceName(l.p.name))}</a>
         <div class="hint">${money(l.p.price)}</div>
         <div class="line-meta">
-          <div class="qty sm"><button data-dec="${l.p.id}" aria-label="Diminuer">−</button><input type="number" value="${l.qty}" min="1" max="${l.p.stock}" data-qty="${l.p.id}" aria-label="Quantité"><button data-inc="${l.p.id}" aria-label="Augmenter">+</button></div>
+          <div class="qty sm"><button data-dec="${l.p.id}" aria-label="Diminuer">−</button><input type="number" value="${l.qty}" min="1" max="${Math.min(l.p.stock, MAX_QTY)}" data-qty="${l.p.id}" aria-label="Quantité"><button data-inc="${l.p.id}" aria-label="Augmenter">+</button></div>
           <button class="remove" data-remove="${l.p.id}">Supprimer</button>
         </div>
       </div>
@@ -583,7 +585,7 @@
           <p>${esc(p.description)}</p>
           ${p.stock > 0 ? `
           <div class="buy-row">
-            <div class="qty"><button data-pdec aria-label="Diminuer">−</button><input type="number" id="pqty" value="1" min="1" max="${p.stock}" aria-label="Quantité"><button data-pinc aria-label="Augmenter">+</button></div>
+            <div class="qty"><button data-pdec aria-label="Diminuer">−</button><input type="number" id="pqty" value="1" min="1" max="${Math.min(p.stock, MAX_QTY)}" aria-label="Quantité"><button data-pinc aria-label="Augmenter">+</button></div>
             <button class="btn btn-primary" data-padd="${p.id}">${ic("cart", 18)}Ajouter au panier</button>
           </div>
           <div class="buy-row" style="margin-top:0">
@@ -659,6 +661,10 @@
           ${!db ? "" : user
             ? `<div class="account-note">${ic("user", 16)} Connecté(e) : <b>${esc(user.email)}</b> — cette commande sera ajoutée à votre compte.</div>`
             : `<div class="account-note">Vous avez un compte ? <a href="#/compte" class="link">Connectez-vous</a> pour retrouver vos commandes. Vous pouvez aussi commander sans compte.</div>`}
+          ${checkoutError ? `<div class="checkout-error">${ic("alert", 22)}<div>
+            <b>Votre commande n'a pas été envoyée</b><p>${esc(checkoutError)}</p>
+            <a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, je n'arrive pas à passer ma commande sur le site : ${checkoutError}`)}">${ic("chat", 16)}Écrire sur WhatsApp</a>
+          </div></div>` : ""}
           <h3 class="steps-title"><b>1</b> Vos coordonnées</h3>
           <div class="form-grid">
             <div class="field"><label for="f-name">Nom complet *</label><input id="f-name" name="name" autocomplete="name" value="${esc(draft.name)}" required><span class="err"></span></div>
@@ -742,6 +748,7 @@
       zone: t.zone.name, payment: pay.name, paymentId: pay.id, customer
     };
 
+    checkoutError = "";
     // Ouvert tout de suite (dans le clic) pour ne pas être bloqué par le navigateur
     const waWindow = window.open("", "_blank");
     const button = $("button[type=submit]", form);
@@ -758,7 +765,9 @@
         if (waWindow) waWindow.close();
         button.disabled = false;
         button.textContent = "✓ Confirmer et envoyer sur WhatsApp";
-        toast(error.message);
+        checkoutError = error.message;
+        render();
+        window.scrollTo(0, 0);
         loadCatalog().then(() => { cart = cart.filter((l) => byId(l.id)); saveCart(); render(); });
         return;
       }
