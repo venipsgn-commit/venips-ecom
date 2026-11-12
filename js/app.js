@@ -245,7 +245,7 @@
     if (next === current) return toast(`Stock maximum atteint (${p.stock})`);
     if (line) line.qty = next; else cart.push({ id, qty: next });
     saveCart();
-    toast(`✓ ${p.name} ajouté au panier`);
+    toast(`✓ ${niceName(p.name)} ajouté au panier`);
   }
   function setQty(id, qty) {
     const p = byId(id);
@@ -1498,5 +1498,18 @@
       if (shown) window.scrollTo(0, y);
     }
   }
+  // Accès en lecture pour l'assistant (js/assistant.js) : toujours les données à jour
+  window.VenipsShop = {
+    products: () => PRODUCTS,
+    categories: () => CATEGORIES,
+    zones: () => S.deliveryZones,
+    freeFrom: () => S.freeDeliveryFrom,
+    launch: () => ({ code: S.launchCode, pct: launchPct }),
+    user: () => user,
+    niceName, specChips, catName, money, esc, ic, waLink,
+    addToCart: (id) => addToCart(id),
+    media
+  };
+
   boot();
 })();
