@@ -62,6 +62,8 @@ window.STORE = {
     TECH10: 10
   },
 
+  // Mentions légales imprimées sur les factures (à compléter si vous en avez)
+  legal: { rccm: "", nif: "" },
   socials: {
     facebook: "",
     instagram: "",

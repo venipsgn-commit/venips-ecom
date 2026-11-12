@@ -125,3 +125,21 @@ table.data input[type=text], table.data input[type=number], table.data select { 
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-block { display: flex; align-items: center; gap: 12px; color: var(--muted); padding: 40px 0; justify-content: center; }
 @media (prefers-reduced-motion: reduce) { .spinner, .boot-screen img { animation-duration: 2.5s; } }
+
+/* ---------- Demandes et avis ---------- */
+.req { margin-bottom: 12px; }
+.req-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.req-head .status { margin-left: auto; }
+.status.req-nouvelle { background: #dbeafe; color: #1e40af; }
+.status.req-en_cours { background: #fef3c7; color: #92400e; }
+.status.req-traitee { background: #dcfce7; color: #166534; }
+.status.req-annulee { background: #f1f5f9; color: #64748b; }
+.req-details { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin: 10px 0; }
+.req-details div { background: #f8fafc; border-radius: 8px; padding: 8px 10px; }
+.req-details small { display: block; color: var(--muted); font-size: 12px; }
+.req-details span { font-weight: 600; font-size: 14px; }
+.req-msg { background: #f8fafc; border-left: 3px solid var(--accent, #0b9b93); padding: 10px 12px; border-radius: 6px; margin: 8px 0; white-space: pre-wrap; }
+.req-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.req-actions select, .req-actions input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.req-actions input { flex: 1; min-width: 160px; }
+.stock-ok { color: #166534; font-weight: 700; font-size: 13px; }

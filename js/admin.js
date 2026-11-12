@@ -141,6 +141,7 @@
   /* ---------- Gabarit ---------- */
   const NAV = [
     ["dashboard", "📊", "Tableau de bord"], ["commandes", "🧾", "Commandes"], ["produits", "📦", "Produits"], ["clients", "👥", "Clients"],
+    ["demandes", "📨", "Demandes"], ["avis", "⭐", "Avis clients"],
     ["categories", "🗂️", "Catégories"], ["livraison", "🚚", "Livraison"], ["promos", "🏷️", "Codes promo"]
   ];
   function renderShell() {
@@ -149,7 +150,7 @@
       <div class="admin">
         <nav class="side">
           <div class="brand"><img src="${esc(S.logoImage || "images/logo.jpg")}" alt="${esc(S.name)}"><small>Admin</small></div>
-          ${NAV.map(([id, ic, label]) => `<a href="#/${id}" class="${tab === id ? "active" : ""}">${ic} ${label}${id === "commandes" ? `<span class="pill-count" id="new-count" hidden></span>` : ""}</a>`).join("")}
+          ${NAV.map(([id, ic, label]) => `<a href="#/${id}" class="${tab === id ? "active" : ""}">${ic} ${label}${id === "commandes" ? `<span class="pill-count" id="new-count" hidden></span>` : id === "demandes" ? `<span class="pill-count" id="req-count" hidden></span>` : id === "avis" ? `<span class="pill-count" id="rev-count" hidden></span>` : ""}</a>`).join("")}
           <div class="spacer"></div>
           <button id="alerts-btn" title="Son et notification à chaque nouvelle commande">🔕 Activer les alertes</button>
           <a href="./" target="_blank" rel="noopener">🛍️ Voir la boutique</a>
@@ -250,6 +251,11 @@
     const { count } = await sb.from("orders").select("id", { count: "exact", head: true }).eq("status", "nouvelle");
     const el = $("#new-count");
     if (el) { el.hidden = !count; el.textContent = count || ""; }
+    const [rq, rv] = await Promise.all([
+      sb.from("requests").select("id", { count: "exact", head: true }).eq("status", "nouvelle").neq("type", "alerte"),
+      sb.from("reviews").select("id", { count: "exact", head: true }).eq("status", "en_attente")
+    ]);
+    [["#req-count", rq.count], ["#rev-count", rv.count]].forEach(([sel, n]) => { const b = $(sel); if (b) { b.hidden = !n; b.textContent = n || ""; } });
   }
 
   async function renderTab() {
@@ -267,6 +273,8 @@
       else if (tab === "categories") await tabCrud(main, CRUD.categories);
       else if (tab === "livraison") await tabDelivery(main);
       else if (tab === "promos") await tabCrud(main, CRUD.promos);
+      else if (tab === "demandes") await tabRequests(main);
+      else if (tab === "avis") await tabReviews(main);
     } catch (e) { fail(e, "Chargement impossible"); }
     if (tab === "dashboard" || tab === "commandes") {
       refreshTimer = setInterval(() => { if (!$(".modal-bg") && !$(".order-detail")) renderTab(); }, 60000);
@@ -292,7 +300,9 @@
 
   /* ---------- Tableau de bord ---------- */
   async function tabDashboard(main) {
-    const [orders, products] = await Promise.all([loadOrders(500), loadProducts()]);
+    const [orders, products, rq, rv] = await Promise.all([loadOrders(500), loadProducts(),
+      sb.from("requests").select("id", { count: "exact", head: true }).eq("status", "nouvelle").neq("type", "alerte"),
+      sb.from("reviews").select("id", { count: "exact", head: true }).eq("status", "en_attente")]);
     const now = new Date();
     const today = now.toDateString();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -309,6 +319,7 @@
         <div class="stat"><small>Chiffre d'affaires du mois</small><strong>${money(monthOrders.reduce((s, o) => s + Number(o.total), 0))}</strong></div>
         <div class="stat ${low.length ? "alert" : ""}"><small>Produits en stock faible</small><strong>${low.length}</strong></div>
       </div>
+      ${rq.count || rv.count ? `<div class="notice" style="margin-bottom:16px">${rq.count ? `📨 <a class="link" href="#/demandes"><b>${rq.count}</b> demande${rq.count > 1 ? "s" : ""} à traiter</a> (devis, réparation, reprise)` : ""}${rq.count && rv.count ? " · " : ""}${rv.count ? `⭐ <a class="link" href="#/avis"><b>${rv.count}</b> avis à vérifier</a>` : ""}</div>` : ""}
       <div class="two-cols">
         <div class="box"><h3>Dernières commandes</h3>
           ${orders.length ? `<div class="table-wrap" style="box-shadow:none"><table class="data"><tr><th>N°</th><th>Client</th><th>Total</th><th>Statut</th></tr>
@@ -328,7 +339,7 @@
   async function tabOrders(main) {
     await loadOrders();
     main.innerHTML = `
-      <div class="main-head"><h1>Commandes</h1><div class="actions"><button class="btn btn-outline btn-sm" id="refresh">↻ Actualiser</button></div></div>
+      <div class="main-head"><h1>Commandes</h1><div class="actions"><button class="btn btn-outline btn-sm" id="export-csv">⬇︎ Export Excel</button><button class="btn btn-outline btn-sm" id="refresh">↻ Actualiser</button></div></div>
       <div class="toolbar-admin">
         <input type="search" id="o-q" placeholder="Rechercher n°, nom, téléphone…" value="${esc(orderFilter.q)}">
         <select id="o-status"><option value="">Tous les statuts</option>${Object.entries(STATUSES).map(([k, v]) => `<option value="${k}" ${orderFilter.status === k ? "selected" : ""}>${v}</option>`).join("")}</select>
@@ -337,13 +348,40 @@
     $("#refresh").addEventListener("click", renderTab);
     $("#o-q").addEventListener("input", (e) => { orderFilter.q = e.target.value; drawOrders(); });
     $("#o-status").addEventListener("change", (e) => { orderFilter.status = e.target.value; drawOrders(); });
+    $("#export-csv").addEventListener("click", exportOrdersCSV);
     drawOrders();
+  }
+
+  // Liste filtrée (mêmes filtres que le tableau)
+  function filteredOrders() {
+    const q = orderFilter.q.trim().toLowerCase();
+    return cache.orders.filter((o) => (!orderFilter.status || o.status === orderFilter.status)
+      && (!q || `${o.id} ${o.customer_name} ${o.customer_phone} ${o.zone_name}`.toLowerCase().includes(q)));
+  }
+
+  // Export CSV lisible par Excel (séparateur « ; », accents conservés)
+  function exportOrdersCSV() {
+    const list = filteredOrders();
+    if (!list.length) return toast("Aucune commande à exporter", true);
+    const cell = (v) => { const t = String(v ?? ""); return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const head = ["N°", "Date", "Statut", "Client", "Téléphone", "Email", "Zone", "Adresse", "Paiement", "Articles", "Quantité", "Sous-total", "Réduction", "Code promo", "Livraison", "Total", "Note interne"];
+    const rows = list.map((o) => [
+      o.id, new Date(o.created_at).toLocaleString("fr-FR"), STATUSES[o.status] || o.status, o.customer_name, o.customer_phone, o.customer_email, o.zone_name, o.address, o.payment,
+      (o.items || []).map((i) => `${i.qty} x ${i.name}`).join(" | "), (o.items || []).reduce((a, i) => a + Number(i.qty), 0),
+      Math.round(o.subtotal), Math.round(o.reduction || 0), o.promo_code || "", Math.round(o.delivery), Math.round(o.total), o.admin_note || ""
+    ]);
+    const csv = "\ufeff" + [head, ...rows].map((r) => r.map(cell).join(";")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `commandes-venips-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast(`${list.length} commande${list.length > 1 ? "s" : ""} exportée${list.length > 1 ? "s" : ""}`);
   }
 
   function drawOrders() {
     const q = orderFilter.q.trim().toLowerCase();
-    const list = cache.orders.filter((o) => (!orderFilter.status || o.status === orderFilter.status)
-      && (!q || `${o.id} ${o.customer_name} ${o.customer_phone} ${o.zone_name}`.toLowerCase().includes(q)));
+    const list = filteredOrders();
     const wrap = $("#orders-table");
     if (!list.length) { wrap.innerHTML = `<p class="hint" style="padding:20px">Aucune commande${q || orderFilter.status ? " ne correspond à ces filtres" : " pour le moment"}.</p>`; return; }
     wrap.innerHTML = `<table class="data">
@@ -366,7 +404,7 @@
     $$(".order-detail").forEach((d) => d.remove());
     const o = cache.orders.find((x) => x.id === tr.dataset.order);
     const phone = o.customer_phone.replace(/\D/g, "");
-    const waMsg = `Bonjour ${o.customer_name.split(" ")[0]}, c'est ${S.name}. Votre commande ${o.id} (${money(o.total)}) est ${(STATUSES[o.status] || "").toLowerCase()}.`;
+    const waUrl = (st) => `https://wa.me/${phone}?text=${encodeURIComponent(waTemplate(o, st))}`;
     const row = document.createElement("tr");
     row.className = "order-detail";
     row.innerHTML = `<td colspan="7"><div class="order-grid">
@@ -392,8 +430,10 @@
         <textarea id="d-note" placeholder="Visible uniquement par l'équipe">${esc(o.admin_note || "")}</textarea>
         <div class="row-actions" style="justify-content:flex-start;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" id="d-save">Enregistrer</button>
-          <a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(waMsg)}">WhatsApp client</a>
+          <a class="btn btn-wa btn-sm" id="d-wa" target="_blank" rel="noopener" href="${waUrl(o.status)}">WhatsApp : message « ${STATUSES[o.status]} »</a>
+          <button class="btn btn-outline btn-sm" id="d-invoice">🧾 ${o.status === "livree" ? "Facture" : "Bon de commande"}</button>
         </div>
+        <p class="hint" style="margin:6px 0 0">Le message WhatsApp s'adapte au statut choisi ci-dessus.</p>
         ${o.gestion_vente_ids && o.gestion_vente_ids.length
           ? `<p class="notice" style="margin-top:10px">✓ Vente enregistrée dans votre logiciel de gestion (vendeur « SITE WEB »).</p>`
           : `<p class="hint" style="margin-top:8px">En passant en « Livrée », la vente est enregistrée automatiquement dans votre logiciel de gestion (vendeur « SITE WEB »).</p>`}
@@ -401,6 +441,12 @@
       </div>
     </div></td>`;
     tr.after(row);
+    $("#d-status", row).addEventListener("change", (e) => {
+      const a = $("#d-wa", row);
+      a.href = waUrl(e.target.value);
+      a.textContent = `WhatsApp : message « ${STATUSES[e.target.value]} »`;
+    });
+    $("#d-invoice", row).addEventListener("click", () => window.VenipsInvoice && window.VenipsInvoice.open(o));
     $("#d-save", row).addEventListener("click", async () => {
       const status = $("#d-status", row).value, admin_note = $("#d-note", row).value.trim() || null;
       const { data, error } = await sb.from("orders").update({ status, admin_note }).eq("id", o.id).select().single();
@@ -413,10 +459,141 @@
     });
   }
 
+  // Messages WhatsApp prêts à envoyer, selon l'étape de la commande
+  function waTemplate(o, st) {
+    const first = String(o.customer_name || "").split(" ")[0];
+    const items = (o.items || []).map((i) => `• ${i.qty} × ${i.name}`).join("\n");
+    const pay = /orange|mtn|momo|mobile/i.test(o.payment || "") ? `\nPaiement : ${o.payment}${S.orangeMoneyNumber && /orange/i.test(o.payment) ? ` au ${S.orangeMoneyNumber}` : ""}${S.mtnMoneyNumber && /mtn|momo/i.test(o.payment) ? ` au ${S.mtnMoneyNumber}` : ""}. Merci d'indiquer « ${o.id} » en motif.` : `\nPaiement : ${o.payment || "à la livraison"}.`;
+    switch (st) {
+      case "nouvelle": return `Bonjour ${first}, c'est ${S.name} 👋\nNous avons bien reçu votre commande ${o.id} :\n${items}\nTotal : ${money(o.total)}.\nNous vous recontactons très vite pour confirmer la livraison.`;
+      case "confirmee": return `Bonjour ${first}, votre commande ${o.id} est confirmée ✅\n${items}\nTotal : ${money(o.total)}.${pay}\nLivraison prévue : ${o.zone_name || "Conakry"}. Nous vous appelons avant de passer.`;
+      case "en_livraison": return `Bonjour ${first}, votre commande ${o.id} est en route 🚚\nNotre livreur vous appelle au ${o.customer_phone} dès qu'il arrive à : ${o.address}.\nMontant à prévoir : ${money(o.total)}.`;
+      case "livree": return `Bonjour ${first}, merci pour votre achat chez ${S.name} 🙏\nVotre commande ${o.id} est livrée. Votre facture est disponible dans « Mon compte » sur ${location.host}.\nSatisfait ? Laissez-nous un avis sur le produit, cela nous aide beaucoup. Pour toute question ou garantie, écrivez-nous ici.`;
+      case "annulee": return `Bonjour ${first}, votre commande ${o.id} a été annulée. Si c'est une erreur ou si vous souhaitez un autre produit, répondez à ce message : nous sommes là pour vous aider.`;
+      default: return `Bonjour ${first}, c'est ${S.name}. À propos de votre commande ${o.id}…`;
+    }
+  }
+
+  /* ---------- Demandes : devis, réparation, reprise, alertes de retour en stock ---------- */
+  const REQ_TYPES = { devis: "🏢 Devis entreprise", reparation: "🔧 Réparation", reprise: "♻️ Reprise", alerte: "🔔 Alerte stock" };
+  const REQ_STATUS = { nouvelle: "Nouvelle", en_cours: "En cours", traitee: "Traitée", annulee: "Annulée" };
+  let reqFilter = { type: "", status: "nouvelle" };
+  let reqCache = [];
+  async function tabRequests(main) {
+    const [{ data, error }] = await Promise.all([
+      sb.from("requests").select("*").order("created_at", { ascending: false }).limit(500),
+      cache.products.length ? Promise.resolve() : loadProducts()
+    ]);
+    if (error) throw error;
+    reqCache = data;
+    const count = (t) => data.filter((r) => r.type === t && r.status === "nouvelle").length;
+    main.innerHTML = `
+      <div class="main-head"><h1>Demandes</h1><div class="actions"><button class="btn btn-outline btn-sm" id="refresh">↻ Actualiser</button></div></div>
+      <div class="toolbar-admin">
+        <select id="r-type"><option value="">Tous les types</option>${Object.entries(REQ_TYPES).map(([k, v]) => `<option value="${k}" ${reqFilter.type === k ? "selected" : ""}>${v}${count(k) ? ` (${count(k)})` : ""}</option>`).join("")}</select>
+        <select id="r-status"><option value="">Tous les statuts</option>${Object.entries(REQ_STATUS).map(([k, v]) => `<option value="${k}" ${reqFilter.status === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+      </div>
+      <div id="req-list"></div>`;
+    $("#refresh").addEventListener("click", renderTab);
+    $("#r-type").addEventListener("change", (e) => { reqFilter.type = e.target.value; drawRequests(); });
+    $("#r-status").addEventListener("change", (e) => { reqFilter.status = e.target.value; drawRequests(); });
+    drawRequests();
+  }
+  function drawRequests() {
+    const wrap = $("#req-list");
+    const list = reqCache.filter((r) => (!reqFilter.type || r.type === reqFilter.type) && (!reqFilter.status || r.status === reqFilter.status));
+    if (!list.length) { wrap.innerHTML = `<div class="box"><p class="hint" style="margin:0">Aucune demande${reqFilter.type || reqFilter.status ? " avec ces filtres" : ""}. Les demandes de devis, réparation, reprise et les alertes « retour en stock » arrivent ici.</p></div>`; return; }
+    const prod = (id) => cache.products.find((p) => p.id === id);
+    wrap.innerHTML = list.map((r) => {
+      const p = r.product_id ? prod(r.product_id) : null;
+      const phone = String(r.phone || "").replace(/\D/g, "");
+      const first = String(r.name || "").split(" ")[0];
+      const back = p && p.active && p.stock > 0;
+      const msg = r.type === "alerte"
+        ? `Bonjour ${first}, bonne nouvelle : « ${p ? p.name : "le produit"} » est de nouveau disponible chez ${S.name} ! ${p ? `${money(p.price)} — ${location.origin}/#/produit/${p.id}` : ""}`
+        : `Bonjour ${first}, c'est ${S.name}. Nous avons bien reçu votre demande D-${r.id} (${(REQ_TYPES[r.type] || "").replace(/^\S+\s/, "").toLowerCase()}).`;
+      return `<div class="box req" data-req="${r.id}">
+        <div class="req-head"><b>${REQ_TYPES[r.type] || r.type}</b><span class="muted">D-${r.id} · ${fmtDate(r.created_at)}</span><span class="status req-${r.status}">${REQ_STATUS[r.status]}</span></div>
+        <p style="margin:6px 0"><b>${esc(r.name)}</b> · <a class="link" href="tel:${esc(String(r.phone).replace(/\s/g, ""))}">${esc(r.phone)}</a>${r.email ? ` · ${esc(r.email)}` : ""}${r.user_id ? ` <small class="muted">· compte client</small>` : ""}</p>
+        ${p ? `<p style="margin:6px 0">Produit : <b>${esc(p.name)}</b> ${back ? `<span class="stock-ok">✓ de nouveau en stock (${p.stock})</span>` : `<span class="stock-out">toujours épuisé</span>`}</p>` : ""}
+        ${r.details && Object.keys(r.details).length ? `<div class="req-details">${Object.entries(r.details).map(([k, v]) => `<div><small>${esc(k)}</small><span>${esc(v)}</span></div>`).join("")}</div>` : ""}
+        ${r.message ? `<p class="req-msg">${esc(r.message)}</p>` : ""}
+        <div class="req-actions">
+          <select data-rstatus>${Object.entries(REQ_STATUS).map(([k, v]) => `<option value="${k}" ${r.status === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+          <input data-rnote placeholder="Note interne" value="${esc(r.admin_note || "")}">
+          <button class="btn btn-primary btn-sm" data-rsave>Enregistrer</button>
+          <a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}">${r.type === "alerte" ? "Prévenir sur WhatsApp" : "Répondre sur WhatsApp"}</a>
+        </div>
+      </div>`;
+    }).join("");
+    $$("[data-rsave]", wrap).forEach((b) => b.addEventListener("click", async () => {
+      const box = b.closest("[data-req]");
+      const id = Number(box.dataset.req);
+      const status = $("[data-rstatus]", box).value, admin_note = $("[data-rnote]", box).value.trim() || null;
+      const { error } = await sb.from("requests").update({ status, admin_note }).eq("id", id);
+      if (error) return fail(error);
+      Object.assign(reqCache.find((r) => r.id === id), { status, admin_note });
+      toast(`Demande D-${id} : ${REQ_STATUS[status]}`);
+      drawRequests();
+      updateNewCount();
+    }));
+  }
+
+  /* ---------- Avis clients (modération) ---------- */
+  let revFilter = "en_attente";
+  async function tabReviews(main) {
+    const [{ data, error }] = await Promise.all([
+      sb.from("reviews").select("*").order("created_at", { ascending: false }).limit(500),
+      cache.products.length ? Promise.resolve() : loadProducts()
+    ]);
+    if (error) throw error;
+    const LABEL = { en_attente: "À vérifier", publie: "Publiés", refuse: "Refusés" };
+    main.innerHTML = `
+      <div class="main-head"><h1>Avis clients</h1></div>
+      <div class="toolbar-admin"><select id="v-status">${Object.entries(LABEL).map(([k, v]) => `<option value="${k}" ${revFilter === k ? "selected" : ""}>${v} (${data.filter((r) => r.status === k).length})</option>`).join("")}</select></div>
+      <p class="hint" style="margin-top:0">Seuls les clients ayant reçu le produit (commande « Livrée ») peuvent laisser un avis. Un avis n'apparaît sur la boutique qu'après publication.</p>
+      <div id="rev-list"></div>`;
+    const draw = () => {
+      const list = data.filter((r) => r.status === revFilter);
+      const name = (id) => (cache.products.find((p) => p.id === id) || {}).name || id;
+      $("#rev-list").innerHTML = list.length ? list.map((r) => `<div class="box req" data-rev="${r.id}">
+        <div class="req-head"><b style="color:#f59e0b">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</b><span>${esc(r.author)}</span><span class="muted">${fmtDate(r.created_at)}</span></div>
+        <p style="margin:6px 0"><small class="muted">Produit :</small> <a class="link" href="./#/produit/${esc(r.product_id)}" target="_blank" rel="noopener">${esc(name(r.product_id))}</a></p>
+        ${r.comment ? `<p class="req-msg">${esc(r.comment)}</p>` : `<p class="hint">(note sans commentaire)</p>`}
+        <div class="req-actions">
+          ${r.status !== "publie" ? `<button class="btn btn-primary btn-sm" data-vset="publie">✓ Publier</button>` : ""}
+          ${r.status !== "refuse" ? `<button class="btn btn-outline btn-sm" data-vset="refuse">Refuser</button>` : ""}
+          <button class="btn btn-outline btn-sm" data-vdel style="color:#b91c1c">Supprimer</button>
+        </div></div>`).join("") : `<div class="box"><p class="hint" style="margin:0">Aucun avis ici.</p></div>`;
+      $$("[data-vset]").forEach((b) => b.addEventListener("click", async () => {
+        const id = b.closest("[data-rev]").dataset.rev, status = b.dataset.vset;
+        const { error: e } = await sb.from("reviews").update({ status }).eq("id", id);
+        if (e) return fail(e);
+        data.find((r) => String(r.id) === id).status = status;
+        toast(status === "publie" ? "Avis publié sur la boutique" : "Avis refusé");
+        draw(); updateNewCount();
+      }));
+      $$("[data-vdel]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Supprimer définitivement cet avis ?")) return;
+        const id = b.closest("[data-rev]").dataset.rev;
+        const { error: e } = await sb.from("reviews").delete().eq("id", id);
+        if (e) return fail(e);
+        data.splice(data.findIndex((r) => String(r.id) === id), 1);
+        toast("Avis supprimé");
+        draw(); updateNewCount();
+      }));
+    };
+    $("#v-status").addEventListener("change", (e) => { revFilter = e.target.value; draw(); });
+    draw();
+  }
+
   /* ---------- Produits ---------- */
   let productQ = "";
+  let waiting = {};   // produit -> nombre de clients qui attendent le retour en stock
   async function tabProducts(main) {
-    await loadProducts();
+    const [, al] = await Promise.all([loadProducts(), sb.from("requests").select("product_id").eq("type", "alerte").eq("status", "nouvelle")]);
+    waiting = {};
+    ((al && al.data) || []).forEach((r) => { waiting[r.product_id] = (waiting[r.product_id] || 0) + 1; });
     main.innerHTML = `
       <div class="main-head"><h1>Produits</h1><div class="actions"><button class="btn btn-primary btn-sm" id="p-new">+ Nouveau produit</button></div></div>
       <div class="toolbar-admin">
@@ -440,7 +617,7 @@
       <tr><th></th><th>Produit</th><th>Catégorie</th><th style="text-align:right">Prix</th><th>Stock</th><th>En ligne</th><th></th></tr>
       ${list.map((p) => `<tr data-id="${esc(p.id)}">
         <td><div class="thumb-sm">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "📦"}</div></td>
-        <td><b>${esc(p.name)}</b><br><small class="muted">${esc(p.brand)}${p.featured ? " · ⭐ vedette" : ""}${p.badge ? ` · ${esc(p.badge)}` : ""}${p.source_id ? " · 🔄 stock synchronisé" : ""}${p.auto_hidden ? " · ⛔ masqué : stock épuisé (réapparaîtra au réassort)" : !p.active ? " · masqué manuellement" : ""}${p.images && p.images.length ? ` · 🖼️ ${p.images.length + 1} images` : ""}</small></td>
+        <td><b>${esc(p.name)}</b><br><small class="muted">${esc(p.brand)}${p.featured ? " · ⭐ vedette" : ""}${p.badge ? ` · ${esc(p.badge)}` : ""}${p.source_id ? " · 🔄 stock synchronisé" : ""}${p.auto_hidden ? " · ⛔ masqué : stock épuisé (réapparaîtra au réassort)" : !p.active ? " · masqué manuellement" : ""}${p.images && p.images.length ? ` · 🖼️ ${p.images.length + 1} images` : ""}${waiting[p.id] ? ` · <a class="link" href="#/demandes" title="Voir les demandes">🔔 ${waiting[p.id]} client${waiting[p.id] > 1 ? "s" : ""} attend${waiting[p.id] > 1 ? "ent" : ""} le retour</a>` : ""}</small></td>
         <td>${esc(catName(p.category_id))}</td>
         <td style="width:150px"><input type="number" min="0" step="1000" value="${p.price}" data-price aria-label="Prix de vente">${p.old_price ? `<small class="muted"><s>${money(p.old_price)}</s></small>` : ""}</td>
         <td style="width:110px"><input type="number" min="0" value="${p.stock}" data-stock class="${p.stock === 0 ? "stock-out" : p.stock <= 3 ? "stock-low" : ""}" aria-label="Stock" title="${p.source_id ? "Mis à jour automatiquement par le logiciel de gestion" : ""}"></td>

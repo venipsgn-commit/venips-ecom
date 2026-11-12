@@ -201,6 +201,33 @@
     }
     if (/^\s*(merci|ok merci|merci beaucoup|super|parfait|top)\b/.test(t)) return `<p>Avec plaisir ! Autre chose ? Je suis là si besoin.</p>`;
 
+    // Services : devis, réparation, reprise, comparateur, guide, avis, alerte
+    if (has(t, "devis", "proforma", "pro forma", "facture pro", "entreprise", "societe", "ecole", "universite", "ong ", "en gros", "grossiste", "plusieurs ordinateurs", "quantite", "equiper", "bureau entier")) {
+      return `<p>Nous équipons les <b>entreprises, écoles et ONG</b> avec des prix adaptés à la quantité. Décrivez votre besoin, nous vous envoyons un devis rapidement.</p><p><a class="as-link" href="#/devis">Demander un devis</a></p>`;
+    }
+    if (has(t, "reprise", "reprendre mon", "echanger mon ancien", "vendre mon ordi", "vendre mon pc", "racheter", "rachat", "troc", "mon ancien")) {
+      return `<p>Oui ! Nous reprenons votre <b>ancien ordinateur</b> en échange d'une réduction sur un nouveau. Décrivez-le (marque, modèle, état) pour recevoir une estimation.</p><p><a class="as-link" href="#/reprise">Faire estimer mon ordinateur</a></p>`;
+    }
+    if (has(t, "reparer", "reparation", "depann", "ecran casse", "ne demarre", "ne s allume", /\blent\b/, "virus", "formater", "formatage", "installer windows", "changer la batterie", "changer l ecran") && !has(t, "garanti")) {
+      return `<p>Nous réparons les ordinateurs : écran, batterie, clavier, démarrage, lenteur, virus, réinstallation de Windows… Diagnostic et prix annoncés <b>avant</b> toute intervention.</p><p><a class="as-link" href="#/reparation">Demander une réparation</a></p><p class="as-small">Produit acheté chez nous et encore sous garantie ? Dites « garantie ».</p>`;
+    }
+    if (has(t, "compar", "difference entre", "lequel choisir", "hesite entre", " versus ", " vs ")) {
+      return `<p>Utilisez notre <b>comparateur</b> : cliquez sur l'icône « Comparer » de 2 ou 3 ordinateurs pour voir prix, processeur, mémoire et stockage côte à côte.</p><p><a class="as-link" href="#/comparer">Ouvrir le comparateur</a> <a class="as-link" href="#/guide">Guide d'achat</a></p>`;
+    }
+    if (has(t, "quel ordinateur", "quel pc", "choisir", "conseil", "pour etudiant", "pour les etudes", "pour le travail", "pour la bureautique", "pour le graphisme", "pour programmer", "i3 ou i5", "i5 ou i7", "difference i5")) {
+      const prod = answerProducts(t, raw);
+      return `<p>Notre <b>guide d'achat</b> explique comment choisir selon votre usage (études, bureau, mobilité, graphisme) et votre budget.</p><p><a class="as-link" href="#/guide">Lire le guide</a></p>${prod && /class="as-card/.test(prod) ? prod : ""}`;
+    }
+    if (has(t, "avis", "temoignage", "note ", "fiable", "serieux", "arnaque", "confiance")) {
+      return `<p>Les <b>avis clients</b> sont visibles sur chaque fiche produit. Ils sont laissés uniquement par des clients ayant reçu le produit (achat vérifié).</p><p>Vous pouvez payer <b>à la livraison</b>, après avoir vu l'article : aucun risque.</p>`;
+    }
+    if (has(t, "epuise", "rupture", "plus en stock", "pas disponible", "revient", "retour en stock", "prevenir", "quand sera")) {
+      return `<p>Quand un produit est épuisé, ouvrez sa fiche et cliquez sur <b>« Me prévenir du retour en stock »</b> : nous vous contactons dès son retour.</p>${waBtn(raw, "Demander sur WhatsApp")}`;
+    }
+    if (has(t, "facture", "recu", "bon de commande")) {
+      return `<p>Votre <b>bon de commande</b> est disponible juste après la commande, et la <b>facture</b> après la livraison, dans <a href="#/mes-commandes">Mon compte › Mes commandes</a> (bouton « Facture », imprimable en PDF).</p>`;
+    }
+
     if (has(t, "suivre", "suivi", "ma commande", "mon colis", "statut", /vn-?\s?\d{6}/, "ou en est", "pas encore recu", "pas recu")) return answerTracking(t);
     if (has(t, "livr", "delai", "expedi", "envoyer a", "interieur du pays", "frais de port", "kaloum", "dixinn", "matam", "ratoma", "matoto", "coyah", "dubreka", "kindia", "labe", "kankan", "nzerekore", "boke", "mamou")) return answerDelivery(t);
     if (has(t, "pai", "payer", "orange money", "momo", "mtn", "espece", "cash", "carte bancaire", "virement", "credit", "tranche", "acompte", "avance")) {
@@ -233,6 +260,9 @@
     ["Livraison", "Combien coûte la livraison ?"],
     ["Paiement", "Comment payer ?"],
     ["Garantie", "Quelle est la garantie ?"],
+    ["Quel ordinateur choisir ?", "Quel ordinateur choisir ?"],
+    ["Devis entreprise", "Je veux un devis pour mon entreprise"],
+    ["Réparation", "Je veux faire réparer mon ordinateur"],
     ["Code promo", "Avez-vous un code promo ?"],
     ["Adresse et horaires", "Où êtes-vous et à quelle heure ?"],
     ["Suivre ma commande", "Je veux suivre ma commande"]
