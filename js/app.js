@@ -115,6 +115,7 @@
   let wish = store.get("wish", []);
   let promo = store.get("promo", "");
   let promoPct = store.get("promoPct", 0);
+  let launchPct = store.get("launchPct", 0);
   let orders = store.get("orders", []);
 
   /* ---------- Icônes de l'interface (traits fins, couleur du texte) ---------- */
@@ -927,6 +928,62 @@
     }
   }
 
+  /* ---------- Offre de lancement ---------- */
+  async function loadLaunch() {
+    if (!db || !S.launchCode) { launchPct = 0; return; }
+    const { data, error } = await db.rpc("check_promo", { p_code: S.launchCode });
+    if (!error) { launchPct = Number(data) || 0; store.set("launchPct", launchPct); }
+  }
+  function drawLaunchBar() {
+    const bar = document.getElementById("launch-bar");
+    if (!bar) return;
+    bar.hidden = !(S.launchCode && launchPct > 0);
+    if (!bar.hidden) bar.innerHTML = `<span><b class="lb-long">Offre de lancement : </b>-${launchPct} %<span class="lb-long"> sur tout le site</span> avec le code <b class="code">${esc(S.launchCode)}</b></span><span class="go"><span class="lb-long">J'en profite</span> ${ic("arrow", 15)}</span>`;
+  }
+
+  function pageLaunch() {
+    document.title = `Offre de lancement – ${S.name}`;
+    if (!(S.launchCode && launchPct > 0)) {
+      return `<div class="container" style="padding:48px 16px"><div class="empty"><div class="big">${ic("tag", 44)}</div><h2>L'offre de lancement est terminée</h2><p class="hint">Merci de votre intérêt ! Découvrez nos ordinateurs et accessoires au meilleur prix.</p><a href="#/boutique" class="btn btn-primary">Voir la boutique</a></div></div>`;
+    }
+    const picks = (PRODUCTS.filter((p) => p.featured).length >= 4 ? PRODUCTS.filter((p) => p.featured) : PRODUCTS).slice(0, 8);
+    const applied = promo === S.launchCode;
+    return `
+      <section class="launch-hero"><div class="container launch-inner">
+        <div>
+          <span class="eyebrow">${ic("tag", 14)} Offre de lancement</span>
+          <h1>-${launchPct} % sur <em>tout le site</em> pour fêter notre boutique en ligne</h1>
+          <p>Ordinateurs portables HP, Dell, Lenovo et accessoires : profitez de la réduction sur votre commande, livrée à Conakry. Vous ne payez qu'à la réception.</p>
+          <div class="hero-actions">
+            <a href="#/boutique" class="btn btn-primary">${ic("bag", 18)}Choisir mes produits</a>
+            <a href="${waLink(`Bonjour ${S.name}, je souhaite profiter de l'offre de lancement (code ${S.launchCode}).`)}" target="_blank" rel="noopener" class="btn btn-ghost">${ic("chat", 18)}Commander sur WhatsApp</a>
+          </div>
+        </div>
+        <div class="code-card">
+          <span>Votre code</span>
+          <strong>${esc(S.launchCode)}</strong>
+          <em>-${launchPct} % sur votre commande</em>
+          <div class="code-actions">
+            <button class="btn btn-outline" data-copy-code>${ic("check", 16)}Copier le code</button>
+            <button class="btn btn-primary" data-apply-code ${applied ? "disabled" : ""}>${applied ? "Code appliqué au panier" : "Appliquer à mon panier"}</button>
+          </div>
+        </div>
+      </div></section>
+
+      <section class="section"><div class="container">
+        <div class="steps3">
+          <div><b>1</b><strong>Choisissez</strong><span>Ajoutez vos produits au panier.</span></div>
+          <div><b>2</b><strong>Saisissez ${esc(S.launchCode)}</strong><span>Dans le panier ou au moment de commander.</span></div>
+          <div><b>3</b><strong>Payez à la livraison</strong><span>En espèces, Orange Money ou MTN MoMo.</span></div>
+        </div>
+      </div></section>
+
+      <section class="section" style="padding-top:0"><div class="container">
+        <div class="section-head"><div><h2>Nos produits du moment</h2><p>Avec -${launchPct} % grâce au code ${esc(S.launchCode)}</p></div><a href="#/boutique" class="link">Tout voir ${ic("arrow", 16)}</a></div>
+        <div class="grid">${picks.map(cardHTML).join("")}</div>
+      </div></section>`;
+  }
+
   function pageWish() {
     const list = wish.map(byId).filter(Boolean);
     document.title = `Favoris – ${S.name}`;
@@ -1117,6 +1174,7 @@
       case "merci": html = pageThanks(decodeURIComponent(parts[1] || "")); break;
       case "mes-commandes": html = pageOrders(); break;
       case "compte": html = pageAccount(); break;
+      case "lancement": html = pageLaunch(); break;
       case "favoris": html = pageWish(); break;
       case "a-propos": html = pageAbout(); break;
       case "livraison": html = pageDelivery(); break;
@@ -1144,7 +1202,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) addToCart(d.add);
@@ -1158,6 +1216,11 @@
     else if ("promoRemove" in d) { promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
     else if ("img" in d) showImage(+d.img);
     else if ("openViewer" in d) openViewer(galleryIndex);
+    else if ("copyCode" in d) {
+      (navigator.clipboard ? navigator.clipboard.writeText(S.launchCode) : Promise.reject())
+        .then(() => toast(`Code ${S.launchCode} copié`), () => toast(`Votre code : ${S.launchCode}`));
+    }
+    else if ("applyCode" in d) applyPromo(S.launchCode).then(() => { if (currentPath() === "/lancement") render(); });
     else if (el.id === "filter-toggle") $("#filters").classList.toggle("open");
     else if ("logout" in d) { db.auth.signOut().then(async () => { store.set("customer", {}); await loadAccount(); render(); toast("Vous êtes déconnecté(e)"); }); }
     else if ("forgot" in d) {
@@ -1303,6 +1366,7 @@
     const cached = store.get("catalog", null);
     if (cached && cached.v === 1) applyCatalog(cached);
     renderShell();
+    drawLaunchBar();
     updateBadges();
     renderCartDrawer();
     let shown = false;
@@ -1310,7 +1374,9 @@
     else app.innerHTML = skeletonHTML();
 
     // 2. Mise à jour silencieuse depuis la base
-    const [fresh] = await Promise.all([loadCatalog(), loadAccount()]);
+    const launchBefore = launchPct;
+    const [fresh] = await Promise.all([loadCatalog(), loadAccount(), loadLaunch()]);
+    drawLaunchBar();
     // Retour d'un lien email (confirmation, mot de passe) : jetons dans l'adresse
     if (hasTokens) {
       if (/type=recovery/.test(location.hash)) recoveryMode = true;
@@ -1338,7 +1404,7 @@
     if (changed) { renderShell(); renderCartDrawer(); }
     updateBadges();
     // 3. Ne redessiner que si nécessaire (pas de saut de page inutile)
-    if (!shown || changed) {
+    if (!shown || changed || (launchPct !== launchBefore && ["/", "/lancement"].includes(currentPath()))) {
       const y = window.scrollY;
       render();
       if (shown) window.scrollTo(0, y);

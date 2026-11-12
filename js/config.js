@@ -30,6 +30,10 @@ window.STORE = {
     { value: "7j/7", label: "conseil sur WhatsApp" }
   ],
 
+  // Offre de lancement : code promo mis en avant (bandeau + page /#/lancement).
+  // Le bandeau ne s'affiche que si ce code est actif dans l'admin (Codes promo). Mettre "" pour le retirer.
+  launchCode: "BIENVENUE",
+
   // Livraison gratuite à partir de ce montant (GNF). Mettre 0 pour désactiver.
   freeDeliveryFrom: 5000000,
 
