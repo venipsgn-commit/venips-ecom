@@ -1,0 +1,24 @@
+{
+  "name": "Venips – Ordinateurs portables et accessoires",
+  "short_name": "Venips",
+  "description": "Ordinateurs portables HP, Dell, Lenovo et accessoires, livrés à Conakry.",
+  "id": "/",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f014c",
+  "theme_color": "#0f014c",
+  "lang": "fr",
+  "categories": ["shopping"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Boutique", "url": "/#/boutique", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Mon panier", "url": "/#/panier", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Mes commandes", "url": "/#/compte", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

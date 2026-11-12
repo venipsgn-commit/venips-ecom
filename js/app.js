@@ -153,6 +153,10 @@
     arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
     back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
     party: '<path d="M4 20l5-14 9 9z"/><path d="M14 4l.5 2M19 5l-1.5 1.5M20 10l-2-.5"/>',
+    download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+    share: '<path d="M12 3v12M7 7l5-4 5 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/>',
+    plus: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/>',
+    dots: '<circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/>',
     sad: '<circle cx="12" cy="12" r="9"/><path d="M8.5 16a4.5 4.5 0 0 1 7 0M9 10h.01M15 10h.01"/>'
   };
   const ic = (name, size = 20, cls = "") => `<svg class="ui-ic ${cls}" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -1157,6 +1161,86 @@
   });
   document.addEventListener("mouseleave", () => $$(".product-media.zooming").forEach((m) => m.classList.remove("zooming")));
 
+  /* ---------- Application installable (raccourci bureau / écran d'accueil) ---------- */
+  let installPrompt = null;
+  const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const UA = navigator.userAgent;
+  const isIOS = /iphone|ipad|ipod/i.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isAndroid = /android/i.test(UA);
+  const isFirefox = /firefox|fxios/i.test(UA);
+  const isMacSafari = /macintosh/i.test(UA) && /safari/i.test(UA) && !/chrome|chromium|edg|crios|fxios/i.test(UA) && !isIOS;
+
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; drawInstall(); });
+  window.addEventListener("appinstalled", () => { installPrompt = null; drawInstall(); closeInstallHelp(); toast("Application Venips installée ✓"); });
+
+  function drawInstall() {
+    const hide = isStandalone();
+    $$("[data-install]").forEach((b) => { b.hidden = hide; });
+  }
+
+  async function installApp() {
+    if (installPrompt) {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      installPrompt = null;
+      if (outcome === "accepted") toast("Installation en cours… l'icône Venips va apparaître");
+      drawInstall();
+      return;
+    }
+    showInstallHelp();
+  }
+
+  function installSteps() {
+    if (isIOS) return {
+      title: "Ajouter Venips à l'écran d'accueil",
+      note: isFirefox || /crios/i.test(UA) ? "Sur iPhone, utilisez de préférence Safari." : "",
+      steps: [["share", "Touchez le bouton <b>Partager</b> en bas de Safari (le carré avec une flèche)."], ["plus", "Faites défiler et choisissez <b>« Sur l'écran d'accueil »</b>."], ["check", "Touchez <b>« Ajouter »</b> : l'icône Venips apparaît sur votre écran."]]
+    };
+    if (isAndroid) return {
+      title: "Installer l'application Venips",
+      steps: [["dots", "Ouvrez le menu <b>⋮</b> du navigateur (en haut à droite)."], ["download", "Choisissez <b>« Installer l'application »</b> ou <b>« Ajouter à l'écran d'accueil »</b>."], ["check", "Confirmez : l'icône Venips apparaît avec vos applications."]]
+    };
+    if (isMacSafari) return {
+      title: "Ajouter Venips au Dock",
+      steps: [["share", "Dans la barre de menus de Safari, ouvrez <b>Fichier</b> (ou le bouton Partager)."], ["plus", "Choisissez <b>« Ajouter au Dock »</b>."], ["check", "Venips s'ouvre désormais comme une application depuis le Dock et le Launchpad."]]
+    };
+    if (isFirefox) return {
+      title: "Installer Venips sur cet ordinateur",
+      note: "Firefox ne permet pas d'installer les applications web.",
+      steps: [["laptop", "Ouvrez <b>venips-ecom.vercel.app</b> dans <b>Google Chrome</b> ou <b>Microsoft Edge</b>."], ["download", "Cliquez sur le bouton <b>« Installer l'app »</b> en haut du site."], ["check", "L'icône Venips est ajoutée au bureau et au menu Démarrer."]]
+    };
+    return {
+      title: "Installer Venips sur cet ordinateur",
+      steps: [["download", "Cliquez sur l'icône d'installation <b>⊕</b> à droite de la barre d'adresse (ou menu <b>⋮</b> → <b>« Installer Venips »</b>)."], ["check", "Confirmez avec <b>« Installer »</b>."], ["laptop", "Venips s'ouvre comme une application, avec son icône sur le bureau et dans le menu Démarrer."]]
+    };
+  }
+
+  function showInstallHelp() {
+    const g = installSteps();
+    closeInstallHelp();
+    const m = document.createElement("div");
+    m.className = "install-modal";
+    m.id = "install-modal";
+    m.setAttribute("role", "dialog");
+    m.setAttribute("aria-modal", "true");
+    m.innerHTML = `<div class="install-card">
+      <button class="install-x" data-install-close aria-label="Fermer">${ic("close", 20)}</button>
+      <img src="icons/icon-192.png" alt="" class="install-icon">
+      <h3>${g.title}</h3>
+      <p class="hint">Une icône Venips sur votre écran, pour ouvrir la boutique en un geste, comme une application.</p>
+      ${g.note ? `<p class="install-note">${g.note}</p>` : ""}
+      <ol>${g.steps.map(([i, t], k) => `<li><span class="n">${k + 1}</span>${ic(i, 20)}<span>${t}</span></li>`).join("")}</ol>
+      <button class="btn btn-primary btn-block" data-install-close>J'ai compris</button>
+    </div>`;
+    m.addEventListener("click", (e) => { if (e.target === m || e.target.closest("[data-install-close]")) closeInstallHelp(); });
+    document.body.appendChild(m);
+  }
+  function closeInstallHelp() { const m = document.getElementById("install-modal"); if (m) m.parentNode.removeChild(m); }
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("Service worker non enregistré", e)));
+  }
+
   /* ---------- Routeur ---------- */
   function currentPath() { return (location.hash.slice(1) || "/").split("?")[0]; }
   function render() {
@@ -1202,7 +1286,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],[data-install],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) addToCart(d.add);
@@ -1216,6 +1300,7 @@
     else if ("promoRemove" in d) { promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
     else if ("img" in d) showImage(+d.img);
     else if ("openViewer" in d) openViewer(galleryIndex);
+    else if ("install" in d) { closeDrawers(); installApp(); }
     else if ("copyCode" in d) {
       (navigator.clipboard ? navigator.clipboard.writeText(S.launchCode) : Promise.reject())
         .then(() => toast(`Code ${S.launchCode} copié`), () => toast(`Votre code : ${S.launchCode}`));
@@ -1327,7 +1412,8 @@
       ["#/", "home", "Accueil"], ["#/boutique", "bag", "Boutique"], ["#/boutique?promo=1", "tag", "Promotions"],
       ...CATEGORIES.map((c) => [`#/boutique?cat=${c.id}`, c.icon === "laptop" ? "laptop" : "mouse", c.name, true]),
       ["#/compte", "user", "Mon compte"], ["#/favoris", "heart", "Mes favoris"], ["#/mes-commandes", "box", "Mes commandes"], ["#/livraison", "truck", "Livraison"], ["#/faq", "help", "FAQ"], ["#/contact", "chat", "Contact"]
-    ].map(([h, i, l, sub]) => `<a class="mm-link ${sub ? "sub" : ""}" href="${h}">${ic(i, 18)}${esc(l)}</a>`).join("");
+    ].map(([h, i, l, sub]) => `<a class="mm-link ${sub ? "sub" : ""}" href="${h}">${ic(i, 18)}${esc(l)}</a>`).join("")
+      + `<button class="mm-link mm-install" data-install hidden>${ic("download", 18)}Installer l'application</button>`;
     $("#wa-float").href = waLink(`Bonjour ${S.name} !`);
     const socials = Object.entries(S.socials).filter(([, v]) => v);
     $("#footer").innerHTML = `
@@ -1336,6 +1422,7 @@
       <div><h4>Boutique</h4>${CATEGORIES.slice(0, 6).map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}<a href="#/boutique?promo=1">Promotions</a></div>
       <div><h4>Aide</h4><a href="#/compte">Mon compte</a><a href="#/livraison">Livraison & retours</a><a href="#/faq">FAQ</a><a href="#/mes-commandes">Suivre ma commande</a><a href="#/contact">Contact</a><a href="#/cgv">CGV</a><a href="#/a-propos">À propos</a></div>
       <div><h4>Besoin d'aide ?</h4><p>Notre équipe vous répond sur WhatsApp.</p><a class="btn btn-wa" style="display:inline-flex;color:#fff" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">${ic("chat", 18)}Écrire sur WhatsApp</a><p class="f-line" style="margin-top:12px">${ic("clock", 16)}${esc(S.hours)}</p>
+        <div class="f-app" data-install hidden><img src="icons/icon-192.png" alt=""><div><strong>Application Venips</strong><span>Une icône sur votre téléphone ou votre bureau</span></div><span class="f-app-btn">${ic("download", 16)}Installer</span></div>
         ${socials.length ? `<p style="margin-top:12px">${socials.map(([k, v]) => `<a href="${esc(v)}" target="_blank" rel="noopener" style="display:inline;margin-right:10px">${k}</a>`).join("")}</p>` : ""}</div>`;
     $("#footer-bottom").innerHTML = `<span>© ${new Date().getFullYear()} ${esc(S.name)}. Tous droits réservés.</span><span class="f-links"><a href="#/cgv">CGV</a><a href="#/livraison">Livraison & retours</a><a href="#/contact">Contact</a></span>`;
   }
@@ -1366,6 +1453,7 @@
     const cached = store.get("catalog", null);
     if (cached && cached.v === 1) applyCatalog(cached);
     renderShell();
+    drawInstall();
     drawLaunchBar();
     updateBadges();
     renderCartDrawer();
@@ -1401,7 +1489,7 @@
       wish = wish.filter((id) => byId(id));
     }
     const changed = !!fresh && JSON.stringify(fresh) !== JSON.stringify(cached);
-    if (changed) { renderShell(); renderCartDrawer(); }
+    if (changed) { renderShell(); drawInstall(); renderCartDrawer(); }
     updateBadges();
     // 3. Ne redessiner que si nécessaire (pas de saut de page inutile)
     if (!shown || changed || (launchPct !== launchBefore && ["/", "/lancement"].includes(currentPath()))) {
