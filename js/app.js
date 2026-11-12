@@ -19,6 +19,23 @@
   let recoveryMode = false;
   const ORDER_STATUS = { nouvelle: "Reçue", confirmee: "Confirmée", en_livraison: "En livraison", livree: "Livrée", annulee: "Annulée" };
 
+  // Fournisseurs de connexion activés dans Supabase (le bouton Google n'apparaît que s'il est activé)
+  let googleEnabled = (() => { try { return localStorage.getItem("ct_googleAuth") === "true"; } catch { return false; } })();
+  async function loadProviders() {
+    if (!db) return;
+    try {
+      const r = await fetch(`${S.supabaseUrl}/auth/v1/settings`, { headers: { apikey: S.supabaseKey } });
+      const d = await r.json();
+      googleEnabled = !!(d.external && d.external.google);
+      store.set("googleAuth", googleEnabled);
+    } catch { /* réseau indisponible : on garde la dernière valeur connue */ }
+  }
+  const GOOGLE_ICON = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+  async function signInWithGoogle() {
+    const { error } = await db.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname + "#/compte" } });
+    if (error) accMsg("Connexion Google indisponible pour le moment. Utilisez votre email.", "err");
+  }
+
   async function loadAccount() {
     if (!db) return;
     const { data } = await db.auth.getSession();
@@ -810,6 +827,11 @@
     if (!user) {
       return `${head("Mon compte")}
         <div class="container"><div id="acc-msg"></div></div>
+        ${googleEnabled ? `<div class="container"><div class="panel google-box">
+          <button type="button" class="btn-google" data-google>${GOOGLE_ICON}<span>Continuer avec Google</span></button>
+          <p class="hint">Connexion ou création de compte en un clic, sans mot de passe.</p>
+          <div class="or-sep"><span>ou avec votre email</span></div>
+        </div></div>` : ""}
         <div class="container account-grid">
           <div class="panel">
             <h3>J'ai déjà un compte</h3>
@@ -1286,7 +1308,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],[data-install],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],[data-install],[data-google],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) addToCart(d.add);
@@ -1301,6 +1323,7 @@
     else if ("img" in d) showImage(+d.img);
     else if ("openViewer" in d) openViewer(galleryIndex);
     else if ("install" in d) { closeDrawers(); installApp(); }
+    else if ("google" in d) signInWithGoogle();
     else if ("copyCode" in d) {
       (navigator.clipboard ? navigator.clipboard.writeText(S.launchCode) : Promise.reject())
         .then(() => toast(`Code ${S.launchCode} copié`), () => toast(`Votre code : ${S.launchCode}`));
@@ -1463,7 +1486,8 @@
 
     // 2. Mise à jour silencieuse depuis la base
     const launchBefore = launchPct;
-    const [fresh] = await Promise.all([loadCatalog(), loadAccount(), loadLaunch()]);
+    const googleBefore = googleEnabled;
+    const [fresh] = await Promise.all([loadCatalog(), loadAccount(), loadLaunch(), loadProviders()]);
     drawLaunchBar();
     // Retour d'un lien email (confirmation, mot de passe) : jetons dans l'adresse
     if (hasTokens) {
@@ -1492,7 +1516,7 @@
     if (changed) { renderShell(); drawInstall(); renderCartDrawer(); }
     updateBadges();
     // 3. Ne redessiner que si nécessaire (pas de saut de page inutile)
-    if (!shown || changed || (launchPct !== launchBefore && ["/", "/lancement"].includes(currentPath()))) {
+    if (!shown || changed || (launchPct !== launchBefore && ["/", "/lancement"].includes(currentPath())) || (googleEnabled !== googleBefore && currentPath() === "/compte")) {
       const y = window.scrollY;
       render();
       if (shown) window.scrollTo(0, y);

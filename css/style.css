@@ -692,3 +692,11 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   body.as-open .as-launcher { display: none; }
   .as-form input { font-size: 16px; }
 }
+
+/* ---------- Connexion Google ---------- */
+.btn-google { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 12px 16px; border-radius: 10px; border: 1.5px solid #dadce0; background: #fff; color: #3c4043; font-weight: 600; font-size: 15px; font-family: inherit; transition: background .15s, box-shadow .15s; }
+.btn-google:hover { background: #f8fafd; box-shadow: 0 1px 3px rgba(60,64,67,.2); }
+.google-box { max-width: 520px; margin: 0 auto 4px; text-align: center; }
+.google-box .hint { margin: 10px 0 0; font-size: 13.5px; }
+.or-sep { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; color: #94a3b8; font-size: 13px; }
+.or-sep::before, .or-sep::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
