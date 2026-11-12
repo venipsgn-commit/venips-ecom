@@ -1484,6 +1484,10 @@
     renderCartDrawer();
     let shown = false;
     if (cached && !hasTokens && !needsAccount) { render(); shown = true; }
+    else if (hasTokens && !/error_description/.test(location.hash)) {
+      // Retour de Google (ou d'un lien email) : on rassure pendant l'ouverture de la session
+      app.innerHTML = `<div class="container" style="padding:90px 16px;text-align:center"><div class="login-wait"></div><h2 style="margin:18px 0 6px">Connexion en cours…</h2><p class="hint">Nous ouvrons votre compte ${esc(S.name)}, un instant.</p></div>`;
+    }
     else app.innerHTML = skeletonHTML();
 
     // 2. Mise à jour silencieuse depuis la base
