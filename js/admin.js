@@ -177,11 +177,23 @@
     bindCode(en.id);
   }
 
+  /* ---------- Accès refusé : on fait comme si la page n'existait pas ---------- */
+  function viewNotFound() {
+    stopRefresh();
+    document.title = "Page introuvable – " + S.name;
+    root.innerHTML = `<div class="auth-wrap"><div class="auth-card" style="text-align:center">
+      <div class="logo-box"><img src="${esc(S.logoImage || "images/logo.jpg")}" alt="${esc(S.name)}"></div>
+      <h1>Page introuvable</h1>
+      <p class="hint">La page que vous cherchez n'existe pas ou a été déplacée.</p>
+      <a href="/" class="btn btn-primary btn-block">Retour à la boutique</a>
+    </div></div>`;
+  }
+
   async function start() {
     const { data } = await sb.auth.getSession();
     session = data.session;
-    // Lien direct vers l'inscription : <adresse privée>#inscription
-    if (!session) return viewAuth(location.hash === "#inscription" ? "signup" : "login");
+    // Pas connecté : la page « n'existe pas ». L'administrateur se connecte depuis la boutique (Mon compte).
+    if (!session) return viewNotFound();
     // Compte administrateur ? (indépendamment de la double vérification)
     let { data: ok, error } = await sb.rpc("admin_account");
     if (error) ({ data: ok, error } = await sb.rpc("is_admin"));   // avant activation côté base
@@ -192,6 +204,8 @@
       if (aalErr) return fail(aalErr);
       if (aal.currentLevel !== "aal2") return viewMfa();
     }
+    if (!ok) return viewNotFound();
+    document.title = "Administration – " + S.name;
     if (!ok) {
       root.innerHTML = `
         <div class="auth-wrap"><div class="auth-card">
@@ -1253,7 +1267,7 @@
     // Pas d'appel Supabase directement dans ce rappel (recommandation de la librairie)
     setTimeout(() => {
       if (event === "PASSWORD_RECOVERY") return viewPasswordReset();
-      if (event === "SIGNED_OUT") { session = null; clearInterval(watchTimer); lastOrderId = undefined; return viewAuth(); }
+      if (event === "SIGNED_OUT") { session = null; clearInterval(watchTimer); lastOrderId = undefined; location.href = "/#/compte"; return; }
       if (event === "SIGNED_IN" && (!session || session.user.id !== s.user.id)) start();
     }, 0);
   });

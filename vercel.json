@@ -2,6 +2,19 @@
   "cleanUrls": true,
   "headers": [
     {
+      "source": "/gestion",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
       "source": "/sw.js",
       "headers": [
         {
@@ -51,7 +64,5 @@
       "source": "/p/:id",
       "destination": "/produit"
     }
-  ],
-  "buildCommand": "sh scripts/build_vercel.sh",
-  "outputDirectory": "dist"
+  ]
 }
