@@ -13,7 +13,7 @@ Site e-commerce d'électronique pour la Guinée (prix en GNF), commandes reçues
 - Responsive (mobile d'abord), bouton WhatsApp flottant, SEO de base
 
 ## Espace administrateur
-Adresse : privée (fichier `gestion-….html` à la racine, ne pas la publier). `/admin` n'existe plus.
+Adresse : privée. Elle est définie dans Vercel (Settings › Environment Variables › `ADMIN_PAGE`) et n'apparaît nulle part dans ce dépôt. La page source est `prive/gestion.html`.
 - Tableau de bord : commandes à traiter, chiffre d'affaires du mois, stock faible
 - Commandes : détail, changement de statut (annuler remet le stock), note interne, contact WhatsApp du client
 - Produits : ajout / modification / suppression, photos, stock, mise en ligne

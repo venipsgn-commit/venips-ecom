@@ -33,15 +33,6 @@
       ]
     },
     {
-      "source": "/gestion-6ovbaoqc7zif",
-      "headers": [
-        {
-          "key": "X-Robots-Tag",
-          "value": "noindex, nofollow"
-        }
-      ]
-    },
-    {
       "source": "/(.*)",
       "headers": [
         {
@@ -60,5 +51,7 @@
       "source": "/p/:id",
       "destination": "/produit"
     }
-  ]
+  ],
+  "buildCommand": "sh scripts/build_vercel.sh",
+  "outputDirectory": "dist"
 }
