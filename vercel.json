@@ -64,5 +64,18 @@
       "source": "/p/:id",
       "destination": "/produit"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "venips-ecom.vercel.app"
+        }
+      ],
+      "destination": "https://www.venips.fr/:path*",
+      "permanent": true
+    }
   ]
 }
