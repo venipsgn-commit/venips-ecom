@@ -2,7 +2,7 @@
   "cleanUrls": true,
   "headers": [
     {
-      "source": "/gestion",
+      "source": "/onovenips",
       "headers": [
         {
           "key": "X-Robots-Tag",

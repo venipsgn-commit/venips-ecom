@@ -13,7 +13,7 @@ Site e-commerce d'électronique pour la Guinée (prix en GNF), commandes reçues
 - Responsive (mobile d'abord), bouton WhatsApp flottant, SEO de base
 
 ## Espace administrateur
-Accès : connectez-vous sur la boutique (Mon compte) avec le compte administrateur, puis bouton « Admin ». La page `/gestion` affiche « Page introuvable » à toute autre personne ; `/admin` n'existe pas.
+Adresse : privée (à garder en favori, non liée depuis la boutique). Page de connexion propre, avec code à 6 chiffres. `/admin` n'existe pas.
 - Tableau de bord : commandes à traiter, chiffre d'affaires du mois, stock faible
 - Commandes : détail, changement de statut (annuler remet le stock), note interne, contact WhatsApp du client
 - Produits : ajout / modification / suppression, photos, stock, mise en ligne

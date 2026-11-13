@@ -42,7 +42,7 @@
     root.innerHTML = `
       <div class="auth-wrap"><div class="auth-card">
         <div class="logo-box"><img src="${esc(S.logoImage || "images/logo.jpg")}" alt="${esc(S.name)}"></div>
-        <h1>${mode === "login" ? "Espace administrateur" : "Créer le compte administrateur"}</h1>
+        <h1>${mode === "login" ? "Espace de gestion" : "Créer le compte"}</h1>
         <p class="hint" style="margin:0">${mode === "login" ? "Connectez-vous pour gérer la boutique." : "Choisissez l'email et le mot de passe qui serviront à gérer la boutique."}</p>
         ${message}
         <div id="google-slot"></div>
@@ -53,7 +53,7 @@
           <button class="btn btn-primary btn-block">${mode === "login" ? "Se connecter" : "Créer mon compte"}</button>
         </form>
         <div class="auth-switch">${mode === "login"
-          ? `Première connexion ? <button data-auth="signup">Créer le compte</button><br><button data-auth="reset" style="margin-top:8px">Mot de passe oublié ?</button>`
+          ? `<button data-auth="reset">Mot de passe oublié ?</button>`
           : `Déjà un compte ? <button data-auth="login">Se connecter</button>`}</div>
         <p class="auth-switch"><a href="./" class="link">← Retour à la boutique</a></p>
       </div></div>`;
@@ -192,8 +192,7 @@
   async function start() {
     const { data } = await sb.auth.getSession();
     session = data.session;
-    // Pas connecté : la page « n'existe pas ». L'administrateur se connecte depuis la boutique (Mon compte).
-    if (!session) return viewNotFound();
+    if (!session) return viewAuth("login");
     // Compte administrateur ? (indépendamment de la double vérification)
     let { data: ok, error } = await sb.rpc("admin_account");
     if (error) ({ data: ok, error } = await sb.rpc("is_admin"));   // avant activation côté base
@@ -204,7 +203,7 @@
       if (aalErr) return fail(aalErr);
       if (aal.currentLevel !== "aal2") return viewMfa();
     }
-    if (!ok) return viewNotFound();
+    if (!ok) { await sb.auth.signOut({ scope: "local" }); return viewNotFound(); }
     document.title = "Administration – " + S.name;
     if (!ok) {
       root.innerHTML = `
@@ -1267,7 +1266,7 @@
     // Pas d'appel Supabase directement dans ce rappel (recommandation de la librairie)
     setTimeout(() => {
       if (event === "PASSWORD_RECOVERY") return viewPasswordReset();
-      if (event === "SIGNED_OUT") { session = null; clearInterval(watchTimer); lastOrderId = undefined; location.href = "/#/compte"; return; }
+      if (event === "SIGNED_OUT") { session = null; clearInterval(watchTimer); lastOrderId = undefined; return viewAuth(); }
       if (event === "SIGNED_IN" && (!session || session.user.id !== s.user.id)) start();
     }, 0);
   });
