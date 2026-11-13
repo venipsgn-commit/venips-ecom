@@ -180,7 +180,7 @@
   async function start() {
     const { data } = await sb.auth.getSession();
     session = data.session;
-    // Lien direct vers l'inscription : /admin#inscription
+    // Lien direct vers l'inscription : <adresse privée>#inscription
     if (!session) return viewAuth(location.hash === "#inscription" ? "signup" : "login");
     // Compte administrateur ? (indépendamment de la double vérification)
     let { data: ok, error } = await sb.rpc("admin_account");
