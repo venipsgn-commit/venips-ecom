@@ -820,3 +820,39 @@ a.stars[data-scroll-reviews] { display: inline-block; }
 }
 .compare-bar .btn { white-space: nowrap; }
 @media (max-width: 400px) { .cb-item { width: 32px; height: 32px; } .compare-bar { gap: 6px; } }
+
+/* ---------- État et batterie ---------- */
+.cond { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; font-size: 12px; font-weight: 600; }
+.cond span { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; background: #eef2ff; color: #3730a3; }
+.cond .b.hi { background: #dcfce7; color: #166534; }
+.cond .b.mid { background: #fef3c7; color: #92400e; }
+.cond .b.lo { background: #fee2e2; color: #991b1b; }
+.cond-box { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 6px 0 14px; background: #fbfcff; }
+.cond-box h3 { margin: 0 0 6px; font-size: 15px; display: flex; gap: 6px; align-items: center; color: var(--navy); }
+.cond-box h3 .ui-ic { color: var(--green); }
+.cond-box p { margin: 0; font-size: 14px; }
+.batt { display: flex; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 14px; }
+.batt span { display: inline-flex; gap: 6px; align-items: center; }
+.batt-bar { height: 8px; border-radius: 99px; background: #e2e8f0; overflow: hidden; margin-top: 6px; }
+.batt-bar i { display: block; height: 100%; border-radius: 99px; }
+.batt-bar i.hi { background: var(--green); }
+.batt-bar i.mid { background: #f59e0b; }
+.batt-bar i.lo { background: var(--red); }
+
+/* ---------- Vente flash ---------- */
+.flash-section { background: linear-gradient(135deg, #0f014c 0%, #2a1590 60%, #0b9b93 140%); padding: 28px 0 32px; margin-bottom: 8px; }
+.flash-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; color: #fff; }
+.flash-head h2 { margin: 0; display: flex; gap: 8px; align-items: center; font-size: 26px; }
+.flash-head h2 .ui-ic { color: #facc15; fill: #facc15; }
+.flash-head p { margin: 4px 0 0; color: #c7d2fe; }
+.flash-timer { text-align: right; }
+.flash-timer small { display: block; color: #c7d2fe; font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .06em; }
+.countdown { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.countdown.big { font-size: 18px; color: #fff; }
+.countdown.big b { display: inline-block; min-width: 40px; text-align: center; background: rgba(255,255,255,.14); border-radius: 8px; padding: 4px 6px; font-size: 22px; margin-left: 4px; }
+.card-flash { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: #b45309; margin: -2px 0 8px; }
+.card-flash .ui-ic { fill: currentColor; }
+.flash-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 12px; padding: 10px 12px; margin: 10px 0 4px; font-weight: 600; font-size: 14px; }
+.flash-strip .ui-ic { fill: currentColor; }
+.flash-strip .countdown { font-weight: 800; }
+@media (max-width: 760px) { .flash-timer { text-align: left; } .flash-head h2 { font-size: 22px; } .countdown.big b { min-width: 34px; font-size: 18px; } }

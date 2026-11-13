@@ -77,6 +77,41 @@
     return out;
   }
 
+  // État et batterie d'un ordinateur (renseignés dans l'admin)
+  const GRADES = {
+    "Neuf": "Jamais utilisé, dans son emballage d'origine.",
+    "Reconditionné Grade A": "Comme neuf : aucune trace visible, testé et nettoyé.",
+    "Reconditionné Grade B": "Légères traces d'usage sur la coque, écran et clavier en parfait état.",
+    "Reconditionné Grade C": "Traces d'usage visibles, parfaitement fonctionnel, prix réduit.",
+    "Occasion": "Ordinateur d'occasion contrôlé par notre équipe."
+  };
+  function conditionOf(p) {
+    const sp = p.specs || {};
+    const etat = sp["État"] || sp["Etat"] || "";
+    const m = String(sp["Batterie"] || "").match(/(\d{2,3})\s*%?/);
+    const batt = m ? Math.min(100, Number(m[1])) : 0;
+    return { etat, batt, autonomie: sp["Autonomie"] || "" };
+  }
+  const battLabel = (b) => (b >= 85 ? "Excellente" : b >= 70 ? "Bonne" : "Correcte");
+  const battCls = (b) => (b >= 85 ? "hi" : b >= 70 ? "mid" : "lo");
+  function condLineHTML(p) {
+    const c = conditionOf(p);
+    if (!c.etat && !c.batt) return "";
+    return `<div class="cond">${c.etat ? `<span>${esc(c.etat.replace("Reconditionné ", ""))}</span>` : ""}${c.batt ? `<span class="b ${battCls(c.batt)}">${ic("battery", 14)}${c.batt} %</span>` : ""}</div>`;
+  }
+  function condBlockHTML(p) {
+    const c = conditionOf(p);
+    if (!c.etat && !c.batt) return "";
+    return `<div class="cond-box">
+      <h3>${ic("check", 18)}État de l'appareil</h3>
+      ${c.etat ? `<p><b>${esc(c.etat)}</b>${GRADES[c.etat] ? ` · ${GRADES[c.etat]}` : ""}</p>` : ""}
+      ${c.batt ? `<div class="batt"><span>${ic("battery", 18)}Santé de la batterie</span><b>${c.batt} % · ${battLabel(c.batt)}</b></div>
+        <div class="batt-bar"><i style="width:${c.batt}%" class="${battCls(c.batt)}"></i></div>` : ""}
+      ${c.autonomie ? `<p class="hint" style="margin:8px 0 0">Autonomie constatée : ${esc(c.autonomie)}</p>` : ""}
+      <p class="hint" style="margin:8px 0 0">Chaque ordinateur est testé avant la vente : écran, clavier, batterie, ports, Wi-Fi.</p>
+    </div>`;
+  }
+
   // Note moyenne et nombre d'avis publiés d'un produit
   function ratingOf(rows, id) {
     const mine = rows.filter((r) => r.product_id === id);
@@ -90,7 +125,29 @@
     PRODUCTS = snap.products;
     S.deliveryZones = snap.zones;
     S.freeDeliveryFrom = snap.freeFrom;
+    flashUntil = Number(snap.flashUntil) || 0;
   }
+
+  /* ---------- Vente flash ---------- */
+  let flashUntil = 0;   // fin de la vente flash (millisecondes)
+  const flashLive = () => flashUntil > Date.now();
+  const isFlash = (p) => p.badge === "Vente flash" && p.oldPrice > p.price;
+  const flashItems = () => (flashLive() ? PRODUCTS.filter(isFlash) : []);
+  function countdownHTML(big) {
+    return `<span class="countdown ${big ? "big" : ""}" data-countdown>${countdownText()}</span>`;
+  }
+  function countdownText() {
+    const ms = Math.max(0, flashUntil - Date.now());
+    const d = Math.floor(ms / 86400000), h = Math.floor(ms / 3600000) % 24, m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60;
+    const two = (n) => String(n).padStart(2, "0");
+    return `${d ? `<b>${d}</b>j ` : ""}<b>${two(h)}</b>h <b>${two(m)}</b>m <b>${two(s)}</b>s`;
+  }
+  setInterval(() => {
+    const els = document.querySelectorAll("[data-countdown]");
+    if (!els.length) return;
+    if (!flashLive()) { document.querySelectorAll("[data-flash-block]").forEach((e) => e.remove()); return; }
+    els.forEach((e) => { e.innerHTML = countdownText(); });
+  }, 1000);
 
   async function loadCatalog() {
     if (!db) return null;
@@ -118,7 +175,8 @@
           ...ratingOf(rv && !rv.error ? rv.data : [], x.id)
         })),
         zones: z.data.map((x) => ({ id: x.id, name: x.name, fee: Number(x.fee), delay: x.delay, freeEligible: x.free_eligible })),
-        freeFrom: free ? Number(free.value) || 0 : S.freeDeliveryFrom
+        freeFrom: free ? Number(free.value) || 0 : S.freeDeliveryFrom,
+        flashUntil: (Number((s.data.find((x) => x.key === "flash_until") || {}).value) || 0) * 1000
       };
       applyCatalog(snap);
       store.set("catalog", snap);
@@ -206,6 +264,8 @@
     building: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',
     bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M19 19v2H6"/>',
+    battery: '<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 10v4M9.5 10v4"/>',
+    bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
     sad: '<circle cx="12" cy="12" r="9"/><path d="M8.5 16a4.5 4.5 0 0 1 7 0M9 10h.01M15 10h.01"/>'
   };
   const ic = (name, size = 20, cls = "") => `<svg class="ui-ic ${cls}" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -439,8 +499,10 @@
         <div class="card-brand">${esc(kicker(p))}</div>
         <a href="#/produit/${p.id}" class="card-title">${esc(niceName(p.name))}</a>
         ${chipsHTML(p)}
+        ${condLineHTML(p)}
         ${p.rating ? `<div class="stars">${stars(p.rating)}<small>(${p.reviews})</small></div>` : ""}
         <div class="price"><strong>${money(p.price)}</strong>${p.oldPrice ? `<s>${money(p.oldPrice)}</s>` : ""}</div>
+        ${isFlash(p) && flashLive() ? `<div class="card-flash" data-flash-block>${ic("bolt", 14)}Fin dans ${countdownHTML()}</div>` : ""}
         <button class="btn btn-dark" data-add="${p.id}" ${p.stock <= 0 ? "disabled" : ""}>${p.stock <= 0 ? "Indisponible" : `${ic("cart", 17)}Ajouter au panier`}</button>
       </div>
     </article>`;
@@ -494,6 +556,11 @@
       <div class="container">
         <div class="trust">${trust.map(([i, t, d]) => `<div class="trust-item"><span class="ic">${ic(i, 22)}</span><div><strong>${t}</strong><small>${d}</small></div></div>`).join("")}</div>
       </div>
+
+      ${flashItems().length ? `<section class="section flash-section" data-flash-block><div class="container">
+        <div class="flash-head"><div><h2>${ic("bolt", 26)}Vente flash</h2><p>Prix cassés, quantités limitées</p></div><div class="flash-timer"><small>Se termine dans</small>${countdownHTML(true)}</div></div>
+        <div class="grid">${flashItems().slice(0, 8).map(cardHTML).join("")}</div>
+      </div></section>` : ""}
 
       <section class="section"><div class="container">
         <div class="section-head"><div><h2>Nos rayons</h2><p>Ordinateurs portables et accessoires pour votre poste de travail</p></div></div>
@@ -552,7 +619,7 @@
     const onlyStock = params.get("stock") === "1";
     const sort = params.get("sort") || "pertinence";
 
-    const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const terms = norm(q).split(/\s+/).filter(Boolean);
     let list = PRODUCTS.filter((p) => {
       const hay = norm(`${p.name} ${p.brand} ${catName(p.category)} ${p.description}`);
@@ -636,8 +703,10 @@
           ${chipsHTML(p)}
           ${p.rating ? `<a href="#reviews" class="stars" data-scroll-reviews>${stars(p.rating)}<small>${p.rating}/5 · ${p.reviews} avis</small></a>` : ""}
           <div class="price" style="margin-top:12px"><strong>${money(p.price)}</strong>${p.oldPrice ? `<s>${money(p.oldPrice)}</s><span class="saving">-${off}% · Économisez ${money(p.oldPrice - p.price)}</span>` : ""}</div>
+          ${isFlash(p) && flashLive() ? `<div class="flash-strip" data-flash-block>${ic("bolt", 18)}<span>Vente flash : ce prix se termine dans</span>${countdownHTML()}</div>` : ""}
           ${stockHTML}
           <p>${esc(p.description)}</p>
+          ${condBlockHTML(p)}
           ${p.stock > 0 ? `
           <div class="buy-row">
             <div class="qty"><button data-pdec aria-label="Diminuer">−</button><input type="number" id="pqty" value="1" min="1" max="${Math.min(p.stock, MAX_QTY)}" aria-label="Quantité"><button data-pinc aria-label="Augmenter">+</button></div>
@@ -1186,9 +1255,11 @@
       ["Prix", (p) => `<b class="${p.price === cheapest && list.length > 1 ? "best" : ""}">${money(p.price)}</b>`],
       ["Disponibilité", (p) => p.stock <= 3 ? `Plus que ${p.stock}` : "En stock"],
       ["Marque", (p) => esc(p.brand || "—")],
+      ["État", (p) => esc(conditionOf(p).etat || "—")],
+      ["Batterie", (p) => conditionOf(p).batt ? `${conditionOf(p).batt} % <small>(${battLabel(conditionOf(p).batt)})</small>` : "—"],
       ["Processeur", (p) => esc((p.specs || {})["Processeur"] || chipVal(p, "cpu") || "—")],
       ["Stockage", (p) => esc((p.specs || {})["Stockage"] || chipVal(p, "drive") || "—")],
-      ...keys.filter((k) => !["Processeur", "Stockage"].includes(k)).map((k) => [k, (p) => esc((p.specs || {})[k] || "—")]),
+      ...keys.filter((k) => !["Processeur", "Stockage", "État", "Etat", "Batterie"].includes(k)).map((k) => [k, (p) => esc((p.specs || {})[k] || "—")]),
       ["Avis", (p) => p.rating ? `${stars(p.rating)} <small>(${p.reviews})</small>` : "—"]
     ];
     return `<div class="container page-head">${crumbs([["Comparateur"]])}<h1>Comparer ${list.length} ordinateur${list.length > 1 ? "s" : ""}</h1></div>
@@ -1873,7 +1944,7 @@
     }
   }
   // Accès en lecture pour l'assistant (js/assistant.js) : toujours les données à jour
-  window.VenipsShop = {
+  window.VenipsShop = { flash: () => ({ until: flashUntil, live: flashLive(), items: flashItems() }),
     products: () => PRODUCTS,
     categories: () => CATEGORIES,
     zones: () => S.deliveryZones,

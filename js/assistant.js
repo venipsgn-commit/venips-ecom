@@ -14,7 +14,7 @@
 
   /* ---------- Outils de lecture du texte ---------- */
   const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
-  const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[’']/g, " ");
+  const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’']/g, " ");
   const has = (t, ...words) => words.some((w) => (w instanceof RegExp ? w.test(t) : t.includes(w)));
   const STOP = new Set("je tu il elle on nous vous ils un une des de du le la les l d a au aux et ou en pour par sur avec dans est sont avez as ai avoir vend vendez vous votre vos mon ma mes ce cet cette ces qui que quoi quel quelle quels quelles combien prix cout coute coutent cher bonjour salut svp stp merci bien tres plus moins est-ce y il-y-a disponible dispo stock en-stock veux voudrais cherche besoin acheter achat avoir faut pas ne ni si oui non moi".split(" "));
 

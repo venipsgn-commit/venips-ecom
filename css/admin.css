@@ -143,3 +143,25 @@ table.data input[type=text], table.data input[type=number], table.data select { 
 .req-actions select, .req-actions input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 .req-actions input { flex: 1; min-width: 160px; }
 .stock-ok { color: #166534; font-weight: 700; font-size: 13px; }
+
+/* ---------- Statistiques ---------- */
+.st-chart { width: 100%; height: auto; display: block; }
+.st-chart rect { fill: #0b9b93; }
+.st-chart rect:hover { fill: #0f014c; }
+.st-chart line.grid { stroke: #eef1f6; }
+.st-chart text { font-size: 11px; fill: #7c8699; }
+.hbar { display: grid; grid-template-columns: minmax(90px, 38%) 1fr auto; gap: 4px 10px; align-items: center; padding: 6px 0; font-size: 13.5px; }
+.hbar-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-t { height: 10px; background: #f1f5f9; border-radius: 99px; overflow: hidden; }
+.hbar-t i { display: block; height: 100%; background: #0b9b93; border-radius: 99px; }
+.hbar b { white-space: nowrap; }
+.hbar small { grid-column: 2 / -1; margin-top: -4px; }
+#st-period { padding: 7px 10px; }
+
+/* ---------- Vente flash ---------- */
+.flash-list { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.flash-row { display: grid; grid-template-columns: 22px 1fr 140px; gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+.flash-row[hidden] { display: none; }
+.flash-row input[type=number] { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; width: 100%; }
+.fr-name { font-size: 14px; font-weight: 600; }
+.fr-name small { display: block; font-weight: 400; }
