@@ -33,7 +33,7 @@
       ]
     },
     {
-      "source": "/admin",
+      "source": "/onovenips",
       "headers": [
         {
           "key": "X-Robots-Tag",

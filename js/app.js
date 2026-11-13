@@ -1057,7 +1057,7 @@
     return `${head(`Bonjour ${esc((p.full_name || "").split(" ")[0] || "")}`)}
       ${isAdmin ? `<div class="container"><div class="admin-banner">
         <div><strong>${ic("lock", 18)} Vous êtes administrateur</strong><span>Gérez les commandes, les produits, les prix, les images et les clients.</span></div>
-        <a href="admin.html" class="btn btn-primary">Ouvrir l'espace admin →</a>
+        <a href="/onovenips" class="btn btn-primary">Ouvrir l'espace admin →</a>
       </div></div>` : ""}
       <div class="container"><div id="acc-msg"></div></div>
       <div class="container account-grid">

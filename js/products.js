@@ -1,6 +1,6 @@
 /* =========================================================
    CATALOGUE DE SECOURS
-   Les produits se gèrent dans l'espace /admin (base Supabase).
+   Les produits se gèrent dans l'espace de gestion (base Supabase).
    Ce fichier n'est utilisé que si la base ne répond pas :
    c'est une copie des produits en ligne au moment de sa création.
    ========================================================= */
