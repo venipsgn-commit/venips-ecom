@@ -115,13 +115,83 @@
     });
   }
 
+  /* ---------- Double vérification (TOTP) ---------- */
+  async function viewMfa() {
+    stopRefresh();
+    const { data: f, error } = await sb.auth.mfa.listFactors();
+    if (error) return fail(error);
+    const verified = (f.all || []).find((x) => x.factor_type === "totp" && x.status === "verified");
+    const card = (inner) => {
+      root.innerHTML = `<div class="auth-wrap"><div class="auth-card">
+        <div class="logo-box"><img src="${esc(S.logoImage || "images/logo.jpg")}" alt="${esc(S.name)}"></div>${inner}
+        <p class="auth-switch"><button id="mfa-logout">Se déconnecter</button></p></div></div>`;
+      $("#mfa-logout").addEventListener("click", () => sb.auth.signOut());
+    };
+    const codeForm = (label) => `<form id="mfa-form" autocomplete="off">
+        <div class="field"><label for="mfa-code">${label}</label>
+          <input id="mfa-code" class="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" autocomplete="one-time-code" required></div>
+        <button class="btn btn-primary btn-block">Valider</button>
+        <div id="mfa-msg"></div>
+      </form>`;
+    const bindCode = (factorId) => {
+      const input = $("#mfa-code");
+      input.focus();
+      input.addEventListener("input", () => { input.value = input.value.replace(/\D/g, "").slice(0, 6); });
+      $("#mfa-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = $("#mfa-form button");
+        btn.disabled = true; btn.textContent = "Vérification…";
+        const { error: err } = await sb.auth.mfa.challengeAndVerify({ factorId, code: input.value });
+        if (err) {
+          btn.disabled = false; btn.textContent = "Valider";
+          $("#mfa-msg").innerHTML = `<div class="notice err">Code incorrect ou expiré. Vérifiez que l'heure de votre téléphone est automatique et réessayez avec le nouveau code.</div>`;
+          input.select();
+          return;
+        }
+        toast("Accès vérifié ✓");
+        start();
+      });
+    };
+
+    if (verified) {
+      card(`<h1>Vérification en 2 étapes</h1>
+        <p class="hint" style="margin:0">Ouvrez votre application d'authentification (Google Authenticator…) et saisissez le code à 6 chiffres affiché pour <b>Venips admin</b>.</p>
+        ${codeForm("Code à 6 chiffres")}`);
+      return bindCode(verified.id);
+    }
+
+    // Première fois : on supprime les essais non terminés puis on crée le QR code
+    for (const x of (f.all || []).filter((x) => x.status !== "verified")) await sb.auth.mfa.unenroll({ factorId: x.id });
+    const { data: en, error: enErr } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Venips admin " + new Date().toISOString().slice(0, 10) });
+    if (enErr) return fail(enErr);
+    card(`<h1>Protégez votre espace admin</h1>
+      <p class="hint" style="margin:0 0 12px">Une seule fois : après votre mot de passe, l'admin demandera un code à 6 chiffres donné par votre téléphone. Un pirate qui volerait votre mot de passe ne pourra pas entrer.</p>
+      <ol class="mfa-steps">
+        <li>Installez <b>Google Authenticator</b> (ou Microsoft Authenticator) sur votre téléphone.</li>
+        <li>Dans l'application, appuyez sur <b>+</b> puis <b>Scanner un code QR</b> :</li>
+      </ol>
+      <div class="mfa-qr"><img src="${en.totp.qr_code}" alt="Code QR à scanner"></div>
+      <details class="mfa-secret"><summary>Impossible de scanner ? Saisir la clé à la main</summary><code>${esc(en.totp.secret)}</code></details>
+      <p class="notice warn" style="margin:12px 0 0;font-size:13px">Gardez cette clé en lieu sûr (photo, papier) : elle permet de réinstaller l'accès sur un nouveau téléphone.</p>
+      ${codeForm("3. Saisissez le code affiché par l'application")}`);
+    bindCode(en.id);
+  }
+
   async function start() {
     const { data } = await sb.auth.getSession();
     session = data.session;
     // Lien direct vers l'inscription : /admin#inscription
     if (!session) return viewAuth(location.hash === "#inscription" ? "signup" : "login");
-    const { data: ok, error } = await sb.rpc("is_admin");
+    // Compte administrateur ? (indépendamment de la double vérification)
+    let { data: ok, error } = await sb.rpc("admin_account");
+    if (error) ({ data: ok, error } = await sb.rpc("is_admin"));   // avant activation côté base
     if (error) return fail(error);
+    if (ok) {
+      // Double vérification obligatoire : code à 6 chiffres de l'application d'authentification
+      const { data: aal, error: aalErr } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aalErr) return fail(aalErr);
+      if (aal.currentLevel !== "aal2") return viewMfa();
+    }
     if (!ok) {
       root.innerHTML = `
         <div class="auth-wrap"><div class="auth-card">

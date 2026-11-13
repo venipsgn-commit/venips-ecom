@@ -47,7 +47,7 @@
     if (user) {
       const [{ data: p }, { data: adm }] = await Promise.all([
         db.from("customer_profiles").select("*").eq("user_id", user.id).maybeSingle(),
-        db.rpc("is_admin")
+        db.rpc("admin_account").then((r) => (r.error ? db.rpc("is_admin") : r))
       ]);
       profile = p;
       isAdmin = adm === true;
