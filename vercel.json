@@ -54,5 +54,11 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/p/:id",
+      "destination": "/produit.html"
+    }
   ]
 }

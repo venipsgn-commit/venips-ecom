@@ -718,6 +718,7 @@
           </div>` : `<a class="btn btn-wa btn-block" target="_blank" rel="noopener" href="${waLink(`Bonjour, quand le produit ${p.name} sera-t-il de nouveau disponible ?`)}">Être prévenu du retour en stock</a>`}
           <div class="buy-row" style="margin-top:0">
             <button class="btn btn-outline wish-btn ${on ? "on" : ""}" data-wish="${p.id}">${ic("heart", 18)}${on ? "Dans vos favoris" : "Ajouter aux favoris"}</button>
+            <a class="btn btn-outline" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`${niceName(p.name)} à ${money(p.price)} chez ${S.name} : ${location.origin}/p/${p.id}`)}">${ic("share", 18)}Partager</a>
             ${p.category === "ordinateurs" ? `<button class="btn btn-outline cmp-btn ${compare.includes(p.id) ? "on" : ""}" data-compare="${p.id}">${ic("compare", 18)}${compare.includes(p.id) ? "Dans le comparateur" : "Comparer"}</button>` : ""}
           </div>
           <div class="perks">

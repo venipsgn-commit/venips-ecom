@@ -1,0 +1,22 @@
+# Met à jour chaque jour les pages produits pour Google, le plan du site et le catalogue Facebook/Google Shopping
+name: Pages Google et catalogue
+on:
+  schedule:
+    - cron: "30 5 * * *"   # tous les jours vers 5 h 30 (heure de Conakry)
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Générer les pages
+        run: python3 scripts/build_seo.py
+      - name: Publier s'il y a des changements
+        run: |
+          git add -A p sitemap.xml catalogue.csv produit.html
+          if git diff --cached --quiet; then echo "Rien de nouveau"; exit 0; fi
+          # Même auteur que le dernier commit, pour que Vercel accepte le déploiement
+          git -c user.name="$(git log -1 --format=%an)" -c user.email="$(git log -1 --format=%ae)" commit -m "Mise à jour automatique des pages produits et du catalogue"
+          git push
