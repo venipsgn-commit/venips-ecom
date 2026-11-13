@@ -1625,7 +1625,7 @@
     if (isFirefox) return {
       title: "Installer Venips sur cet ordinateur",
       note: "Firefox ne permet pas d'installer les applications web.",
-      steps: [["laptop", "Ouvrez <b>venips-ecom.vercel.app</b> dans <b>Google Chrome</b> ou <b>Microsoft Edge</b>."], ["download", "Cliquez sur le bouton <b>« Installer l'app »</b> en haut du site."], ["check", "L'icône Venips est ajoutée au bureau et au menu Démarrer."]]
+      steps: [["laptop", "Ouvrez <b>www.venips.fr</b> dans <b>Google Chrome</b> ou <b>Microsoft Edge</b>."], ["download", "Cliquez sur le bouton <b>« Installer l'app »</b> en haut du site."], ["check", "L'icône Venips est ajoutée au bureau et au menu Démarrer."]]
     };
     return {
       title: "Installer Venips sur cet ordinateur",

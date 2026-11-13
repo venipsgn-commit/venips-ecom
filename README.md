@@ -13,7 +13,7 @@ Site e-commerce d'électronique pour la Guinée (prix en GNF), commandes reçues
 - Responsive (mobile d'abord), bouton WhatsApp flottant, SEO de base
 
 ## Espace administrateur
-Adresse : `/admin` (ex. https://venips-ecom.vercel.app/admin)
+Adresse : `/admin` (ex. https://www.venips.fr/admin)
 - Tableau de bord : commandes à traiter, chiffre d'affaires du mois, stock faible
 - Commandes : détail, changement de statut (annuler remet le stock), note interne, contact WhatsApp du client
 - Produits : ajout / modification / suppression, photos, stock, mise en ligne

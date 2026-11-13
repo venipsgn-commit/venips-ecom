@@ -15,7 +15,7 @@ import re
 import shutil
 import urllib.request
 
-SITE = "https://venips-ecom.vercel.app"
+SITE = "https://www.venips.fr"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 config = open(os.path.join(ROOT, "js/config.js"), encoding="utf-8").read()
