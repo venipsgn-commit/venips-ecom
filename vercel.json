@@ -2,19 +2,6 @@
   "cleanUrls": true,
   "headers": [
     {
-      "source": "/onovenips",
-      "headers": [
-        {
-          "key": "X-Robots-Tag",
-          "value": "noindex, nofollow"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "no-store"
-        }
-      ]
-    },
-    {
       "source": "/sw.js",
       "headers": [
         {
@@ -46,6 +33,15 @@
       ]
     },
     {
+      "source": "/admin",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
@@ -63,19 +59,6 @@
     {
       "source": "/p/:id",
       "destination": "/produit"
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "venips-ecom.vercel.app"
-        }
-      ],
-      "destination": "https://www.venips.fr/:path*",
-      "permanent": true
     }
   ]
 }

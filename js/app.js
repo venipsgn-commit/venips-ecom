@@ -47,7 +47,7 @@
     if (user) {
       const [{ data: p }, { data: adm }] = await Promise.all([
         db.from("customer_profiles").select("*").eq("user_id", user.id).maybeSingle(),
-        db.rpc("admin_account").then((r) => (r.error ? db.rpc("is_admin") : r))
+        db.rpc("is_admin")
       ]);
       profile = p;
       isAdmin = adm === true;
@@ -1057,7 +1057,7 @@
     return `${head(`Bonjour ${esc((p.full_name || "").split(" ")[0] || "")}`)}
       ${isAdmin ? `<div class="container"><div class="admin-banner">
         <div><strong>${ic("lock", 18)} Vous êtes administrateur</strong><span>Gérez les commandes, les produits, les prix, les images et les clients.</span></div>
-        <a href="/onovenips" class="btn btn-primary">Ouvrir l'espace admin →</a>
+        <a href="admin.html" class="btn btn-primary">Ouvrir l'espace admin →</a>
       </div></div>` : ""}
       <div class="container"><div id="acc-msg"></div></div>
       <div class="container account-grid">
