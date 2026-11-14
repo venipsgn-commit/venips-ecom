@@ -51,7 +51,8 @@ window.STORE = {
   payments: [
     { id: "livraison", name: "Paiement à la livraison", desc: "Payez en espèces à la réception de votre colis." },
     { id: "orange", name: "Orange Money", desc: "Envoyez le montant au numéro Orange Money ci-dessous, puis partagez la capture sur WhatsApp." },
-    { id: "mtn", name: "MTN Mobile Money", desc: "Envoyez le montant au numéro MoMo ci-dessous, puis partagez la capture sur WhatsApp." }
+    { id: "mtn", name: "MTN Mobile Money", desc: "Envoyez le montant au numéro MoMo ci-dessous, puis partagez la capture sur WhatsApp." },
+    { id: "tranches", name: "Paiement en plusieurs fois", desc: "Sur accord de notre équipe : payez en 2 ou 3 fois. Nous vous appelons pour valider avant la livraison." }
   ],
   orangeMoneyNumber: "+224 628 88 03 54",
   mtnMoneyNumber: "+224 628 88 03 54",

@@ -174,3 +174,17 @@ table.data input[type=text], table.data input[type=number], table.data select { 
 .mfa-secret { margin-top: 10px; font-size: 13px; }
 .mfa-secret summary { cursor: pointer; color: var(--accent-dark); font-weight: 600; }
 .mfa-secret code { display: block; margin-top: 8px; padding: 10px; background: #f1f5f9; border-radius: 8px; word-break: break-all; font-size: 14px; letter-spacing: .05em; }
+
+/* ---------- Rapport du matin, garanties, témoignages ---------- */
+.report { margin-bottom: 16px; }
+.report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.report-grid a { display: block; background: #f8fafc; border-radius: 10px; padding: 10px 12px; color: inherit; text-decoration: none; }
+.report-grid a:hover { background: #eef2ff; }
+.report-grid b { display: block; font-size: 22px; color: #0f014c; }
+.report-grid span { font-size: 13px; color: var(--muted); }
+.w-form { display: grid; gap: 8px; margin-top: 8px; }
+.w-line { display: grid; grid-template-columns: 1fr 150px 100px; gap: 6px; align-items: center; font-size: 13px; }
+.w-line input, .w-line select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.testi-admin { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.testi-admin .req { margin: 0; }
+@media (max-width: 700px) { .w-line { grid-template-columns: 1fr; } }

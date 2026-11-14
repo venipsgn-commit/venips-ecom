@@ -70,10 +70,12 @@
   </table>
   <div class="totals">
     <div><span>Sous-total</span><span>${money(o.subtotal)}</span></div>
-    ${Number(o.reduction) ? `<div><span>Réduction${o.promo_code ? ` (${esc(o.promo_code)})` : ""}</span><span>-${money(o.reduction)}</span></div>` : ""}
+    ${Number(o.reduction) ? `<div><span>Réduction${o.pack_name ? ` (${esc(o.pack_name)}${o.promo_code ? " + " + esc(o.promo_code) : ""})` : o.promo_code ? ` (${esc(o.promo_code)})` : ""}</span><span>-${money(o.reduction)}</span></div>` : ""}
+    ${Number(o.points_used) ? `<div><span>Points fidélité</span><span>-${money(o.points_used)}</span></div>` : ""}
     <div><span>Livraison</span><span>${Number(o.delivery) ? money(o.delivery) : "Gratuite"}</span></div>
     <div class="grand"><span>Total</span><span>${money(o.total)}</span></div>
   </div>
+  ${(o.warranties || []).length ? `<h3 style="margin:26px 0 8px;font-size:15px;color:#0f014c">Garantie</h3><table><thead><tr><th>Appareil</th><th>N° de série</th><th>Certificat</th><th class="r">Valable jusqu'au</th></tr></thead><tbody>${o.warranties.map((w) => { const e = new Date(w.start_date); e.setMonth(e.getMonth() + Number(w.months)); return `<tr><td>${esc(w.product_name)}</td><td>${esc(w.serial || "—")}</td><td>${esc(w.id)}</td><td class="r">${e.toLocaleDateString("fr-FR")}</td></tr>`; }).join("")}</tbody></table><p style="font-size:12px;color:#64748b;margin:6px 0 0">Vérifiez cette garantie à tout moment sur ${esc(location.host)}/#/garantie</p>` : ""}
   <div class="note">${delivered
     ? "Merci pour votre achat. Conservez ce document : il vous sera demandé pour toute demande de garantie ou d'échange."
     : "Ce bon de commande récapitule votre commande. La facture définitive est disponible après la livraison."}

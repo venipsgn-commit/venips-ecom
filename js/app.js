@@ -126,7 +126,10 @@
     S.deliveryZones = snap.zones;
     S.freeDeliveryFrom = snap.freeFrom;
     flashUntil = Number(snap.flashUntil) || 0;
+    PACKS = snap.packs || [];
+    TESTIMONIALS = snap.testimonials || [];
   }
+  let PACKS = [], TESTIMONIALS = [];
 
   /* ---------- Vente flash ---------- */
   let flashUntil = 0;   // fin de la vente flash (millisecondes)
@@ -153,19 +156,21 @@
     if (!db) return null;
     try {
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("délai dépassé")), 8000));
-      const [c, p, z, s, rv] = await Promise.race([Promise.all([
+      const [c, p, z, s, rv, pk, tm] = await Promise.race([Promise.all([
         db.from("categories").select("*").order("position"),
         // Seuls les produits en ligne et en stock (même pour un administrateur connecté)
         db.from("products").select("*").eq("active", true).gt("stock", 0).order("position").order("created_at"),
         db.from("delivery_zones").select("*").order("position"),
         db.from("shop_settings").select("*"),
-        db.from("reviews").select("product_id,rating").eq("status", "publie")
+        db.from("reviews").select("product_id,rating").eq("status", "publie"),
+        db.from("packs").select("*").eq("active", true).order("position"),
+        db.from("testimonials").select("id,name,city,text,photo_url,rating").eq("active", true).order("position").order("created_at", { ascending: false }).limit(30)
       ]), timeout]);
       const err = c.error || p.error || z.error || s.error;
       if (err) throw err;
       const free = s.data.find((x) => x.key === "free_delivery_from");
       const snap = {
-        v: 2,
+        v: 3,
         categories: c.data.map((x) => ({ id: x.id, name: x.name, icon: x.icon })),
         products: p.data.map((x) => ({
           id: x.id, name: x.name, brand: x.brand, category: x.category_id,
@@ -176,7 +181,9 @@
         })),
         zones: z.data.map((x) => ({ id: x.id, name: x.name, fee: Number(x.fee), delay: x.delay, freeEligible: x.free_eligible })),
         freeFrom: free ? Number(free.value) || 0 : S.freeDeliveryFrom,
-        flashUntil: (Number((s.data.find((x) => x.key === "flash_until") || {}).value) || 0) * 1000
+        flashUntil: (Number((s.data.find((x) => x.key === "flash_until") || {}).value) || 0) * 1000,
+        packs: pk && !pk.error ? pk.data.map((x) => ({ id: x.id, name: x.name, description: x.description, ids: x.product_ids || [], price: Number(x.price), image: x.image_url })) : [],
+        testimonials: tm && !tm.error ? tm.data : []
       };
       applyCatalog(snap);
       store.set("catalog", snap);
@@ -212,7 +219,9 @@
   let wish = store.get("wish", []);
   let promo = store.get("promo", "");
   let promoPct = store.get("promoPct", 0);
-  let compare = store.get("compare", []);   // jusqu'à 3 produits à comparer
+  let compare = store.get("compare", []);
+  let cartContact = store.get("cartContact", null);   // nom + téléphone saisis à la commande (relance des paniers)
+  let saveCartTimer;   // jusqu'à 3 produits à comparer
   const MAX_QTY = 10;           // limite par produit et par commande (vérifiée aussi par la base)
   let checkoutError = "";       // dernier refus de commande, affiché sur la page Commande
   let launchPct = store.get("launchPct", 0);
@@ -266,6 +275,11 @@
     book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M19 19v2H6"/>',
     battery: '<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 10v4M9.5 10v4"/>',
     bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M5 12v9h14v-9"/><path d="M12 8c-2-4-6-4-6-1s4 1 6 1zM12 8c2-4 6-4 6-1s-4 1-6 1z"/>',
+    search2: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    quote: '<path d="M7 7h4v4c0 3-2 5-4 5M15 7h4v4c0 3-2 5-4 5"/>',
+    medal: '<circle cx="12" cy="15" r="6"/><path d="M8.5 10L6 3h4l2 4 2-4h4l-2.5 7"/>',
+    trend: '<path d="M3 7l6 6 4-4 8 8"/><path d="M21 11v6h-6"/>',
     sad: '<circle cx="12" cy="12" r="9"/><path d="M8.5 16a4.5 4.5 0 0 1 7 0M9 10h.01M15 10h.01"/>'
   };
   const ic = (name, size = 20, cls = "") => `<svg class="ui-ic ${cls}" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -344,7 +358,7 @@
     : productIcon(p));
 
   /* ---------- Panier / favoris ---------- */
-  function saveCart() { store.set("cart", cart); updateBadges(); renderCartDrawer(); }
+  function saveCart() { syncCartRemote(); store.set("cart", cart); updateBadges(); renderCartDrawer(); }
   function addToCart(id, qty = 1) {
     const p = byId(id);
     if (!p || p.stock <= 0) return toast("Produit en rupture de stock");
@@ -401,14 +415,30 @@
   function totals(zoneId) {
     const items = cart.map((l) => ({ ...l, p: byId(l.id) })).filter((l) => l.p);
     const subtotal = items.reduce((s, l) => s + l.p.price * l.qty, 0);
+    const pk = packSaving(items);
     const pct = promo ? promoPct : 0;
-    const reduction = Math.round((subtotal * pct) / 100);
+    const promoRed = Math.round(((subtotal - pk.save) * pct) / 100);
+    const reduction = promoRed + pk.save;
+    const points = usePoints && profile && profile.points > 0 ? Math.min(Number(profile.points), Math.floor((subtotal - reduction) * 0.5)) : 0;
     const zone = S.deliveryZones.find((z) => z.id === zoneId);
     const eligible = zone ? zone.freeEligible !== false && zone.id !== "interieur" : true;
     const free = S.freeDeliveryFrom > 0 && subtotal - reduction >= S.freeDeliveryFrom && eligible;
     const delivery = zone ? (free ? 0 : zone.fee) : 0;
     const count = items.reduce((s, l) => s + l.qty, 0);
-    return { items, subtotal, pct, reduction, zone, free, delivery, total: subtotal - reduction + delivery, count };
+    return { items, subtotal, pct, reduction, promoRed, pack: pk, points, zone, free, delivery, total: subtotal - reduction - points + delivery, count };
+  }
+  let usePoints = false;
+
+  // Meilleur pack contenu dans le panier (même règle que le serveur, qui recalcule de toute façon)
+  function packSaving(items) {
+    let best = { save: 0, name: "" };
+    for (const k of PACKS) {
+      const n = Math.min(...k.ids.map((id) => items.filter((l) => l.id === id).reduce((s, l) => s + l.qty, 0)));
+      if (!(n > 0)) continue;
+      const full = k.ids.reduce((s, id) => s + ((byId(id) || {}).price || 0), 0);
+      if (full > k.price && (full - k.price) * n > best.save) best = { save: (full - k.price) * n, name: k.name };
+    }
+    return best;
   }
 
   function updateBadges() {
@@ -575,6 +605,11 @@
           </a>`; }).join("")}</div>
       </div></section>
 
+      ${PACKS.length ? `<section class="section" style="padding-top:0"><div class="container">
+        <div class="section-head"><div><h2>${ic("gift", 24)} Nos packs</h2><p>Tout ce qu'il faut, à prix réduit</p></div><a href="#/packs" class="link">Tous les packs ${ic("arrow", 16)}</a></div>
+        <div class="packs-grid">${PACKS.slice(0, 3).map(packHTML).join("")}</div>
+      </div></section>` : ""}
+
       <section class="section" style="padding-top:0"><div class="container">
         <div class="section-head"><div><h2>Produits vedettes</h2><p>Nos meilleures ventes du moment</p></div><a href="#/boutique" class="link">Tout voir ${ic("arrow", 16)}</a></div>
         <div class="grid">${featured.map(cardHTML).join("")}</div>
@@ -602,6 +637,11 @@
         </div>
         ${brands.length ? `<div class="brands"><span>Les marques que nous proposons</span><div>${brands.map((b) => `<b>${esc(b)}</b>`).join("")}</div></div>` : ""}
       </div></section>
+
+      ${TESTIMONIALS.length ? `<section class="section" style="padding-top:0"><div class="container">
+        <div class="section-head"><div><h2>Ils nous font confiance</h2><p>Nos clients en parlent</p></div><a href="#/temoignages" class="link">Tous les témoignages ${ic("arrow", 16)}</a></div>
+        <div class="testi-grid">${TESTIMONIALS.slice(0, 3).map(testiHTML).join("")}</div>
+      </div></section>` : ""}
 
       <section class="section"><div class="container">
         <div class="section-head"><div><h2>Nouveautés</h2><p>Les derniers arrivages</p></div><a href="#/boutique" class="link">Tout voir ${ic("arrow", 16)}</a></div>
@@ -721,6 +761,17 @@
             <a class="btn btn-outline" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`${niceName(p.name)} à ${money(p.price)} chez ${S.name} : ${location.origin}/p/${p.id}`)}">${ic("share", 18)}Partager</a>
             ${p.category === "ordinateurs" ? `<button class="btn btn-outline cmp-btn ${compare.includes(p.id) ? "on" : ""}" data-compare="${p.id}">${ic("compare", 18)}${compare.includes(p.id) ? "Dans le comparateur" : "Comparer"}</button>` : ""}
           </div>
+          <div class="panel price-alert" id="price-alert" hidden>
+            <form class="request-form" id="request-form" data-type="prix" data-product="${esc(p.id)}" novalidate>
+              <p style="margin:0 0 10px">${ic("trend", 18)} Nous vous prévenons sur WhatsApp si le prix de ce produit baisse.</p>
+              <div class="form-grid">
+                <div class="field"><label for="pa-name">Nom</label><input id="pa-name" name="name" value="${esc((profile || {}).full_name || "")}" required></div>
+                <div class="field"><label for="pa-phone">Téléphone</label><input id="pa-phone" name="phone" type="tel" placeholder="6XX XX XX XX" value="${esc(((profile || {}).phone || "").replace(/^\+224\s?/, ""))}" required></div>
+              </div>
+              <button class="btn btn-dark btn-block" style="margin-top:10px">Me prévenir</button>
+            </form>
+          </div>
+          <button class="link-btn" data-price-alert style="margin:-4px 0 14px">${ic("trend", 15)}Prévenez-moi si le prix baisse</button>
           <div class="perks">
             <div>${ic("truck")}<span>Livraison à Conakry le jour même · dès ${money(Math.min(...S.deliveryZones.filter((z) => z.fee > 0).map((z) => z.fee)))}</span></div>
             <div>${ic("wallet")}<span>Paiement à la livraison, Orange Money ou MTN MoMo</span></div>
@@ -817,9 +868,11 @@
   function summaryHTML(t, withDelivery) {
     return `
       <div class="sum-row"><span>Sous-total (${t.count} article${t.count > 1 ? "s" : ""})</span><span>${money(t.subtotal)}</span></div>
-      ${t.reduction ? `<div class="sum-row"><span>Code ${esc(promo)} (-${t.pct}%)</span><span class="green">-${money(t.reduction)}</span></div>` : ""}
+      ${t.pack && t.pack.save ? `<div class="sum-row"><span>${ic("gift", 14)} ${esc(t.pack.name)}</span><span class="green">-${money(t.pack.save)}</span></div>` : ""}
+      ${t.promoRed ? `<div class="sum-row"><span>Code ${esc(promo)} (-${t.pct}%)</span><span class="green">-${money(t.promoRed)}</span></div>` : ""}
+      ${t.points ? `<div class="sum-row"><span>${ic("medal", 14)} Points fidélité</span><span class="green">-${money(t.points)}</span></div>` : ""}
       ${withDelivery ? `<div class="sum-row"><span>Livraison${t.zone ? ` · ${esc(t.zone.name)}` : ""}</span><span>${!t.zone ? "—" : t.delivery === 0 ? `<span class="green">Gratuite</span>` : money(t.delivery)}</span></div>` : ""}
-      <div class="sum-row total"><span>Total</span><span>${money(withDelivery ? t.total : t.subtotal - t.reduction)}</span></div>`;
+      <div class="sum-row total"><span>Total</span><span>${money(withDelivery ? t.total : t.subtotal - t.reduction - t.points)}</span></div>`;
   }
 
   function promoHTML() {
@@ -835,7 +888,7 @@
       address: profile.address, zone: profile.zone_id || ""
     } : {};
     const draft = {};
-    ["name", "phone", "email", "address", "zone", "notes", "payment"].forEach((k) => { draft[k] = saved[k] || fromProfile[k] || ""; });
+    ["name", "phone", "email", "address", "zone", "notes", "payment", "slot_day", "slot_time", "tranches"].forEach((k) => { draft[k] = saved[k] || fromProfile[k] || ""; });
     const t = totals(draft.zone);
     document.title = `Commande – ${S.name}`;
     if (!t.items.length) { location.hash = "#/panier"; return ""; }
@@ -861,12 +914,16 @@
           <div class="form-grid">
             <div class="field full"><label for="f-zone">Zone de livraison *</label>
               <select id="f-zone" name="zone" required><option value="">— Choisir votre zone —</option>${S.deliveryZones.map((z) => `<option value="${z.id}" ${draft.zone === z.id ? "selected" : ""}>${esc(z.name)} · ${z.fee ? money(z.fee) : "Gratuit"} · ${esc(z.delay)}</option>`).join("")}</select><span class="err"></span></div>
-            <div class="field full"><label for="f-address">Quartier / adresse précise *</label><input id="f-address" name="address" placeholder="Ex. : Kipé, près de la pharmacie…" value="${esc(draft.address)}" required><span class="err"></span></div>
+            <div class="field full" id="addr-field" ${draft.zone === "retrait" ? "hidden" : ""}><label for="f-address">Quartier / adresse précise *</label><input id="f-address" name="address" placeholder="Ex. : Kipé, près de la pharmacie…" value="${esc(draft.zone === "retrait" ? "" : draft.address)}" required><span class="err"></span></div>
+            <div class="field full retrait-note" id="retrait-note" ${draft.zone === "retrait" ? "" : "hidden"}>${ic("pin", 16)}<span><b>Retrait gratuit en boutique</b> — ${esc(S.address)}. Nous vous appelons quand votre commande est prête.</span></div>
+            <div class="field"><label for="f-day" id="day-label">${draft.zone === "retrait" ? "Jour de retrait" : "Jour de livraison"}</label><select id="f-day" name="slot_day">${slotDays().map((d) => `<option ${draft.slot_day === d ? "selected" : ""}>${d}</option>`).join("")}</select></div>
+            <div class="field"><label for="f-time">Créneau</label><select id="f-time" name="slot_time">${["Peu importe", "Matin (8 h – 12 h)", "Après-midi (12 h – 17 h)", "Soir (17 h – 20 h)"].map((d) => `<option ${draft.slot_time === d ? "selected" : ""}>${d}</option>`).join("")}</select></div>
             <div class="field full"><label for="f-notes">Instructions (facultatif)</label><textarea id="f-notes" name="notes" rows="2" placeholder="Heure de livraison souhaitée, repère…">${esc(draft.notes)}</textarea></div>
           </div>
 
           <h3 class="steps-title"><b>3</b> Mode de paiement</h3>
           <div class="options">${S.payments.map((m, i) => `<label class="option"><input type="radio" name="payment" value="${m.id}" ${(draft.payment ? draft.payment === m.id : i === 0) ? "checked" : ""}><div><strong>${esc(m.name)}</strong><small>${esc(m.desc)}${m.id === "orange" ? ` <b>N° : ${esc(S.orangeMoneyNumber)}</b>` : m.id === "mtn" ? ` <b>N° : ${esc(S.mtnMoneyNumber)}</b>` : ""}</small></div></label>`).join("")}</div>
+          <div class="field" id="tranches-field" ${draft.payment === "tranches" ? "" : "hidden"} style="margin-top:10px"><label for="f-tranches">Nombre de paiements</label><select id="f-tranches" name="tranches"><option value="2" ${draft.tranches === "2" ? "selected" : ""}>2 fois</option><option value="3" ${draft.tranches === "3" ? "selected" : ""}>3 fois</option></select><small class="hint">Le premier paiement se fait à la livraison. Notre équipe vous appelle pour fixer les dates.</small></div>
         </div>
 
         <div class="panel" style="align-self:start">
@@ -875,6 +932,7 @@
           <hr style="border:0;border-top:1px solid var(--line);margin:10px 0">
           <div id="checkout-summary">${summaryHTML(t, true)}</div>
           ${promoHTML()}
+          ${user && profile && Number(profile.points) > 0 ? `<label class="points-box"><input type="checkbox" name="use_points" ${usePoints ? "checked" : ""}><span>${ic("medal", 16)} Utiliser mes points fidélité <small>Solde : <b>${money(profile.points)}</b> · jusqu'à 50 % de la commande</small></span></label>` : ""}
           <button type="submit" class="btn btn-wa btn-block" style="margin-top:8px">✓ Confirmer et envoyer sur WhatsApp</button>
           <p class="hint" style="text-align:center;margin-bottom:0">Votre commande sera envoyée à notre équipe sur WhatsApp pour confirmation. Aucun paiement en ligne n'est demandé.</p>
         </div>
@@ -889,7 +947,8 @@
       ...o.items.map((i) => `• ${i.qty} × ${i.name} — ${money(i.price * i.qty)}`),
       "",
       `Sous-total : ${money(o.subtotal)}`,
-      ...(o.reduction ? [`Réduction (${o.promo}) : -${money(o.reduction)}`] : []),
+      ...(o.reduction ? [`Réduction${o.pack ? ` (${o.pack}${o.promo ? " + " + o.promo : ""})` : o.promo ? ` (${o.promo})` : ""} : -${money(o.reduction)}`] : []),
+      ...(o.points_used ? [`Points fidélité : -${money(o.points_used)}`] : []),
       `Livraison (${o.zone}) : ${o.delivery ? money(o.delivery) : "Gratuite"}`,
       `*TOTAL : ${money(o.total)}*`,
       "",
@@ -912,7 +971,11 @@
     if (!/^6\d{8}$/.test(digits)) errors.phone = "Numéro guinéen invalide (9 chiffres, commence par 6).";
     if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) errors.email = "Adresse email invalide.";
     if (!data.zone) errors.zone = "Choisissez une zone de livraison.";
+    if (data.zone === "retrait") data.address = "Retrait en boutique";
     if (!data.address || data.address.trim().length < 3) errors.address = "Indiquez votre quartier ou adresse.";
+    // Créneau souhaité + paiement en plusieurs fois : ajoutés aux instructions
+    const when = [data.slot_day && data.slot_day !== "Dès que possible" ? data.slot_day : "", data.slot_time && data.slot_time !== "Peu importe" ? data.slot_time : ""].filter(Boolean).join(", ");
+    data.notes = [when ? `${data.zone === "retrait" ? "Retrait" : "Livraison"} souhaité(e) : ${when}` : "", (data.notes || "").trim()].filter(Boolean).join(" · ");
     const keys = Object.keys(errors);
     if (keys.length) {
       keys.forEach((k) => { const el = form.elements[k]; const f = el && el.closest(".field"); if (f) { f.classList.add("invalid"); $(".err", f).textContent = errors[k]; } });
@@ -923,14 +986,15 @@
     const t = totals(data.zone);
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    const pay = S.payments.find((m) => m.id === data.payment) || S.payments[0];
+    const pay0 = S.payments.find((m) => m.id === data.payment) || S.payments[0];
+    const pay = pay0.id === "tranches" ? { ...pay0, name: `Paiement en ${data.tranches || 2} fois (à valider)` } : pay0;
     const customer = { name: data.name.trim(), phone: "+224 " + digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4"), email: (data.email || "").trim(), address: data.address.trim(), notes: (data.notes || "").trim() };
     const order = {
       id: `VN-${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
       date: now.toISOString(),
       items: t.items.map((l) => ({ id: l.p.id, name: l.p.name, price: l.p.price, qty: l.qty })),
       subtotal: t.subtotal, reduction: t.reduction, promo, delivery: t.delivery, total: t.total,
-      zone: t.zone.name, payment: pay.name, paymentId: pay.id, customer
+      zone: t.zone.name, payment: pay.name, paymentId: pay.id, customer, points_used: t.points, pack: t.pack.name
     };
 
     checkoutError = "";
@@ -943,7 +1007,7 @@
     let saved = null;
     if (db) {
       const { data: res, error } = await db.rpc("place_order", {
-        p_order: { items: order.items.map((i) => ({ id: i.id, qty: i.qty })), name: customer.name, phone: customer.phone, email: customer.email, address: customer.address, notes: customer.notes, zone: data.zone, payment: pay.name, promo }
+        p_order: { items: order.items.map((i) => ({ id: i.id, qty: i.qty })), name: customer.name, phone: customer.phone, email: customer.email, address: customer.address, notes: customer.notes, zone: data.zone, payment: pay.name, promo, use_points: usePoints && t.points > 0 }
       });
       if (error && error.code === "P0001") {
         // Refus métier (stock insuffisant, produit retiré…) : on prévient le client
@@ -959,7 +1023,9 @@
       if (error) console.warn("Commande non enregistrée en base, envoi WhatsApp seulement.", error);
       saved = res;
     }
-    if (saved) Object.assign(order, { id: saved.id, items: saved.items, subtotal: saved.subtotal, reduction: saved.reduction, promo: saved.promo || "", delivery: saved.delivery, total: saved.total, zone: saved.zone });
+    if (saved) Object.assign(order, { id: saved.id, items: saved.items, subtotal: saved.subtotal, reduction: saved.reduction, promo: saved.promo || "", delivery: saved.delivery, total: saved.total, zone: saved.zone, points_used: saved.points_used || 0, pack: saved.pack || "" });
+    if (saved && saved.points_used && profile) profile.points = Math.max(0, Number(profile.points) - saved.points_used);
+    usePoints = false;
 
     orders = [order, ...orders].slice(0, 50);
     store.set("orders", orders);
@@ -991,7 +1057,8 @@
         ${payInfo}
       </div>
       <button class="btn btn-outline" data-receipt-local="${esc(o.id)}">${ic("receipt", 18)}Bon de commande (PDF)</button>
-      <a href="#/boutique" class="btn btn-outline">Continuer mes achats</a> <a href="#/mes-commandes" class="btn btn-outline">Mes commandes</a>
+      <a href="#/suivi?id=${esc(o.id)}" class="btn btn-outline">${ic("truck", 18)}Suivre ma commande</a>
+      <a href="#/boutique" class="btn btn-outline">Continuer mes achats</a>
     </div></div>`;
   }
 
@@ -1064,8 +1131,18 @@
         <div class="panel">
           <div class="account-head"><h3 style="margin:0">Mes commandes</h3><a href="#/boutique" class="link">Continuer mes achats →</a></div>
           <div id="my-orders" class="orders" style="margin-top:14px"><p class="hint">Chargement…</p></div>
+          <div class="account-head" style="margin-top:26px"><h3 style="margin:0">Mes garanties</h3><a href="#/garantie" class="link">Vérifier une garantie →</a></div>
+          <div id="my-warranties" style="margin-top:12px"><p class="hint">Chargement…</p></div>
         </div>
-        <div class="panel" style="align-self:start">
+        <div style="display:grid;gap:16px;align-self:start">
+        <div class="panel loyalty">
+          <h3>${ic("medal", 20)} Fidélité et parrainage</h3>
+          <div class="loyalty-points"><small>Vos points</small><strong>${money(p.points || 0)}</strong><span>à utiliser sur votre prochaine commande</span></div>
+          <p class="hint">Gagnez <b>1 %</b> de chaque commande livrée. Parrainez un proche : il a <b>-5 %</b> sur sa première commande et vous gagnez <b>2 %</b> de son achat.</p>
+          ${p.referral_code ? `<div class="ref-code"><span>Votre code parrain</span><b>${esc(p.referral_code)}</b><button class="link-btn" data-copy-ref="${esc(p.referral_code)}">Copier</button></div>
+          <a class="btn btn-wa btn-block" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Je te recommande ${S.name} pour les ordinateurs à Conakry. Utilise mon code ${p.referral_code} sur www.venips.fr : -5 % sur ta première commande !`)}">${ic("chat", 18)}Partager mon code sur WhatsApp</a>` : ""}
+        </div>
+        <div class="panel">
           <h3>Mes informations</h3>
           <p class="hint" style="margin-top:-6px">${esc(user.email)}</p>
           <form id="profile-form" novalidate>
@@ -1077,10 +1154,21 @@
           </form>
           <button class="btn btn-outline btn-block" data-logout style="margin-top:14px">Se déconnecter</button>
         </div>
+        </div>
       </div>`;
   }
 
+  async function loadMyWarranties() {
+    const box = document.getElementById("my-warranties");
+    if (!box || !user) return;
+    const { data } = await db.from("warranties").select("id,product_name,serial,start_date,months").order("created_at", { ascending: false });
+    box.innerHTML = (data || []).length ? data.map((w) => { const end = warrantyEnd(w); const ok = end >= new Date(); return `<div class="warranty-row ${ok ? "ok" : "off"}">${ic("shield", 18)}<div><b>${esc(w.product_name)}</b><small>N° ${esc(w.id)}${w.serial ? ` · Série ${esc(w.serial)}` : ""}</small></div><span>${ok ? "Valable jusqu'au" : "Expirée le"} ${end.toLocaleDateString("fr-FR")}</span></div>`; }).join("")
+      : `<p class="hint">Vos certificats de garantie apparaîtront ici après la livraison de vos ordinateurs.</p>`;
+  }
+  const warrantyEnd = (w) => { const d = new Date(w.start_date || w.start); d.setMonth(d.getMonth() + Number(w.months || 0)); return d; };
+
   async function loadMyOrders() {
+    loadMyWarranties();
     const box = document.getElementById("my-orders");
     if (!box || !user) return;
     const { data, error } = await db.from("orders").select("id,created_at,status,items,total,payment,zone_name")
@@ -1097,6 +1185,8 @@
   async function openReceipt(id) {
     const { data, error } = await db.from("orders").select("*").eq("id", id).maybeSingle();
     if (error || !data) return toast("Document indisponible pour le moment");
+    const { data: w } = await db.from("warranties").select("id,product_name,serial,start_date,months").eq("order_id", id);
+    data.warranties = w || [];
     window.VenipsInvoice && window.VenipsInvoice.open(data);
   }
   function openLocalReceipt(id) {
@@ -1363,15 +1453,15 @@
     if (btn) { btn.disabled = true; btn.textContent = "Envoi…"; }
     const phone = "+224 " + digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4");
     const { data, error } = await db.rpc("submit_request", { p: { type, name: d.name.trim(), phone, email: (d.email || "").trim(), message: (d.message || "").trim(), details, product_id: f.dataset.product || null } });
-    if (error) { if (btn) { btn.disabled = false; btn.textContent = type === "alerte" ? "Me prévenir du retour en stock" : "Envoyer ma demande"; } return fail(error.code === "P0001" ? error.message : "Envoi impossible pour le moment. Réessayez ou écrivez-nous sur WhatsApp."); }
+    if (error) { if (btn) { btn.disabled = false; btn.textContent = ["alerte", "prix"].includes(type) ? "Me prévenir du retour en stock" : "Envoyer ma demande"; } return fail(error.code === "P0001" ? error.message : "Envoi impossible pour le moment. Réessayez ou écrivez-nous sur WhatsApp."); }
     const ref = `D-${data.id}`;
-    const label = type === "alerte" ? "alerte de retour en stock" : (R ? R.title.toLowerCase() : "demande");
+    const label = type === "prix" ? "alerte baisse de prix" : type === "alerte" ? "alerte de retour en stock" : (R ? R.title.toLowerCase() : "demande");
     const waText = `Bonjour ${S.name}, je viens d'envoyer une demande (${label}) sur le site, référence ${ref}.${type === "reparation" || type === "reprise" ? " Je vous envoie des photos de l'appareil." : ""}`;
-    const container = f.closest(".panel");
+    const container = f.closest(".panel") || f.parentNode;
     container.innerHTML = `<div class="request-ok">
       <div class="check">${ic("check", 32)}</div>
-      <h2>${type === "alerte" ? (data.deja ? "Vous êtes déjà sur la liste" : "C'est noté !") : "Demande envoyée !"}</h2>
-      <p>${type === "alerte" ? "Nous vous prévenons dès que ce produit revient en stock." : `Référence <b>${ref}</b>. Notre équipe vous recontacte très vite au <b>${esc(phone)}</b>.`}</p>
+      <h2>${["alerte", "prix"].includes(type) ? (data.deja ? "Vous êtes déjà sur la liste" : "C'est noté !") : "Demande envoyée !"}</h2>
+      <p>${["alerte", "prix"].includes(type) ? (type === "prix" ? "Nous vous prévenons sur WhatsApp dès que le prix baisse." : "Nous vous prévenons dès que ce produit revient en stock.") : `Référence <b>${ref}</b>. Notre équipe vous recontacte très vite au <b>${esc(phone)}</b>.`}</p>
       ${type !== "alerte" ? `<a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(waText)}">${ic("chat", 18)}${type === "reparation" || type === "reprise" ? "Envoyer des photos sur WhatsApp" : "Accélérer sur WhatsApp"}</a>` : ""}
       <p><a class="link" href="#/boutique">Continuer sur la boutique</a></p></div>`;
   }
@@ -1404,6 +1494,148 @@
       <h2>4. Notre conseil</h2>
       <p>Utilisez le <a class="link" href="#/comparer">comparateur</a> pour voir 2 ou 3 modèles côte à côte, et n'hésitez pas à nous demander conseil : nous vous aidons à choisir selon votre budget.</p>
       <p><a class="btn btn-primary" href="#/boutique?cat=ordinateurs">${ic("laptop", 18)}Voir les ordinateurs</a> <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, pouvez-vous m'aider à choisir un ordinateur ?`)}">${ic("chat", 18)}Demander conseil</a></p>`);
+  }
+
+  /* ---------- Packs ---------- */
+  function packHTML(k) {
+    const prods = k.ids.map(byId).filter(Boolean);
+    if (prods.length !== k.ids.length) return "";
+    const full = prods.reduce((s, p) => s + p.price, 0);
+    return `<article class="pack">
+      <div class="pack-imgs">${prods.map((p) => `<a href="#/produit/${p.id}" class="pack-img ${p.image ? "img-wait" : ""}" title="${esc(niceName(p.name))}">${media(p)}</a>`).join(`<span class="pack-plus">+</span>`)}</div>
+      <h3>${esc(k.name)}</h3>
+      ${k.description ? `<p class="hint">${esc(k.description)}</p>` : ""}
+      <ul>${prods.map((p) => `<li>${esc(niceName(p.name))}</li>`).join("")}</ul>
+      <div class="price"><strong>${money(k.price)}</strong>${full > k.price ? `<s>${money(full)}</s><span class="saving">Économisez ${money(full - k.price)}</span>` : ""}</div>
+      <button class="btn btn-primary btn-block" data-pack="${esc(k.id)}">${ic("cart", 17)}Ajouter le pack</button>
+    </article>`;
+  }
+  function addPack(id) {
+    const k = PACKS.find((x) => x.id === id);
+    if (!k) return;
+    k.ids.forEach((pid) => { const p = byId(pid); if (!p) return; const line = cart.find((l) => l.id === pid); if (line) line.qty = Math.min(line.qty + 1, p.stock, MAX_QTY); else cart.push({ id: pid, qty: 1 }); });
+    saveCart();
+    toast(`✓ ${k.name} ajouté au panier`);
+    openDrawer("#cart-drawer");
+  }
+  function pagePacks() {
+    document.title = `Packs – ${S.name}`;
+    const list = PACKS.map(packHTML).filter(Boolean);
+    return `<div class="container page-head">${crumbs([["Packs"]])}<h1>Nos packs</h1><p class="hint">Un ordinateur et ses accessoires, à un prix groupé. La réduction s'applique automatiquement dans le panier.</p></div>
+      <div class="container" style="padding-bottom:48px">${list.length ? `<div class="packs-grid">${list.join("")}</div>` : `<div class="empty"><div class="big">${ic("gift", 44)}</div><h3>Pas de pack pour le moment</h3><a href="#/boutique" class="btn btn-primary">Voir la boutique</a></div>`}</div>`;
+  }
+
+  /* ---------- Témoignages ---------- */
+  function testiHTML(t) {
+    return `<figure class="testi">
+      ${t.photo_url ? `<div class="testi-photo"><img src="${esc(t.photo_url)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>` : ""}
+      <blockquote>${ic("quote", 22)}<p>${esc(t.text)}</p></blockquote>
+      <figcaption><span class="stars">${stars(t.rating || 5)}</span><b>${esc(t.name)}</b>${t.city ? `<small>${esc(t.city)}</small>` : ""}</figcaption>
+    </figure>`;
+  }
+  function pageTestimonials() {
+    document.title = `Témoignages – ${S.name}`;
+    return `<div class="container page-head">${crumbs([["Témoignages"]])}<h1>Ils nous font confiance</h1></div>
+      <div class="container" style="padding-bottom:48px">${TESTIMONIALS.length ? `<div class="testi-grid">${TESTIMONIALS.map(testiHTML).join("")}</div>` : `<p class="hint">Les témoignages de nos clients arrivent bientôt.</p>`}</div>`;
+  }
+
+  /* ---------- Suivi de commande sans compte ---------- */
+  const STATUS_STEPS = [["nouvelle", "Reçue"], ["confirmee", "Confirmée"], ["en_livraison", "En livraison"], ["livree", "Livrée"]];
+  function pageTrack(query) {
+    document.title = `Suivre ma commande – ${S.name}`;
+    const id = new URLSearchParams(query || "").get("id") || "";
+    const last = orders[0];
+    return `<div class="container page-head">${crumbs([["Suivre ma commande"]])}<h1>Suivre ma commande</h1></div>
+      <div class="container cart-layout">
+        <div class="panel">
+          <form id="track-form" novalidate>
+            <div class="form-grid">
+              <div class="field"><label for="tr-id">Numéro de commande</label><input id="tr-id" name="order" placeholder="VN-251114-AB12" value="${esc(id || (last ? last.id : ""))}" required></div>
+              <div class="field"><label for="tr-phone">Téléphone utilisé</label><input id="tr-phone" name="phone" type="tel" placeholder="6XX XX XX XX" value="${esc(last && (!id || last.id === id) ? last.customer.phone.replace(/^\+224\s?/, "") : "")}" required></div>
+            </div>
+            <button class="btn btn-primary btn-block" style="margin-top:12px">${ic("search2", 18)}Voir l'état de ma commande</button>
+          </form>
+          <div id="track-result"></div>
+        </div>
+        <div class="panel" style="align-self:start"><h3>Besoin d'aide ?</h3><p class="hint">Le numéro de commande (VN-…) figure dans votre message WhatsApp de confirmation.</p>
+          <a class="btn btn-wa btn-block" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, je souhaite suivre ma commande.`)}">${ic("chat", 18)}Demander sur WhatsApp</a></div>
+      </div>`;
+  }
+  async function trackOrder(f) {
+    const d = Object.fromEntries(new FormData(f));
+    const box = document.getElementById("track-result");
+    const digits = (d.phone || "").replace(/\D/g, "").replace(/^(00)?224/, "");
+    if (!/^VN-/i.test((d.order || "").trim()) || !/^6\d{8}$/.test(digits)) { box.innerHTML = `<div class="checkout-error">${ic("alert", 20)}<div><p style="margin:0">Indiquez le numéro de commande (VN-…) et votre numéro de téléphone (9 chiffres).</p></div></div>`; return; }
+    box.innerHTML = `<p class="hint">Recherche…</p>`;
+    const { data } = await db.rpc("track_order", { p_id: d.order.trim(), p_phone: digits });
+    if (!data) { box.innerHTML = `<div class="checkout-error">${ic("alert", 20)}<div><p style="margin:0">Aucune commande trouvée avec ce numéro et ce téléphone. Vérifiez-les ou écrivez-nous sur WhatsApp.</p></div></div>`; return; }
+    const idx = STATUS_STEPS.findIndex(([k]) => k === data.status);
+    box.innerHTML = `<div class="track">
+      <div class="track-head"><b>${esc(data.id)}</b><span>${new Date(data.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</span></div>
+      ${data.status === "annulee" ? `<div class="checkout-error" style="margin:12px 0">${ic("alert", 20)}<div><b>Commande annulée</b><p>Contactez-nous sur WhatsApp pour toute question.</p></div></div>` : `
+      <ol class="track-steps">${STATUS_STEPS.map(([k, label], i) => `<li class="${i < idx ? "done" : i === idx ? "now" : ""}"><span>${i <= idx ? ic("check", 14) : i + 1}</span>${label}</li>`).join("")}</ol>`}
+      ${(data.items || []).map((i) => `<div class="sum-row"><span>${i.qty} × ${esc(i.name)}</span></div>`).join("")}
+      <div class="sum-row total"><span>Total · ${esc(data.payment)}</span><span>${money(data.total)}</span></div>
+      <p class="hint">${esc(data.zone)}</p></div>`;
+  }
+
+  /* ---------- Vérifier une garantie ---------- */
+  function pageWarranty(query) {
+    document.title = `Vérifier une garantie – ${S.name}`;
+    const q = new URLSearchParams(query || "").get("q") || "";
+    if (q) setTimeout(() => { const f = document.getElementById("warranty-form"); if (f) checkWarranty(f); });
+    return `<div class="container page-head">${crumbs([["Garantie"]])}<h1>Vérifier une garantie</h1><p class="hint">Chaque ordinateur vendu par ${esc(S.name)} reçoit un certificat de garantie avec son numéro de série.</p></div>
+      <div class="container cart-layout">
+        <div class="panel">
+          <form id="warranty-form" novalidate>
+            <div class="field"><label for="wa-q">Numéro de garantie (G-…) ou numéro de série de l'appareil</label><input id="wa-q" name="q" value="${esc(q)}" placeholder="G-1A2B3C4D ou 5CD1234XYZ" required></div>
+            <button class="btn btn-primary btn-block" style="margin-top:12px">${ic("shield", 18)}Vérifier</button>
+          </form>
+          <div id="warranty-result"></div>
+        </div>
+        <div class="panel" style="align-self:start"><h3>Un souci avec votre appareil ?</h3><p class="hint">Sous garantie, nous le réparons ou l'échangeons après vérification.</p><a class="btn btn-outline btn-block" href="#/reparation">${ic("tool", 18)}Demander une réparation</a></div>
+      </div>`;
+  }
+  async function checkWarranty(f) {
+    const q = String(new FormData(f).get("q") || "").trim();
+    const box = document.getElementById("warranty-result");
+    if (q.length < 4) { box.innerHTML = `<p class="hint">Saisissez au moins 4 caractères.</p>`; return; }
+    box.innerHTML = `<p class="hint">Vérification…</p>`;
+    const { data } = await db.rpc("check_warranty", { p_q: q });
+    if (!data) { box.innerHTML = `<div class="checkout-error">${ic("alert", 20)}<div><b>Aucune garantie trouvée</b><p>Vérifiez le numéro, ou contactez-nous sur WhatsApp avec votre facture.</p></div></div>`; return; }
+    const end = new Date(data.end);
+    box.innerHTML = `<div class="warranty-card ${data.valid ? "ok" : "off"}">
+      <div class="wc-head">${ic("shield", 28)}<div><b>${data.valid ? "Garantie valable" : "Garantie expirée"}</b><small>Certificat N° ${esc(data.id)}</small></div></div>
+      <div class="sum-row"><span>Appareil</span><b>${esc(data.product)}</b></div>
+      ${data.serial ? `<div class="sum-row"><span>N° de série</span><b>${esc(data.serial)}</b></div>` : ""}
+      <div class="sum-row"><span>Début</span><b>${new Date(data.start).toLocaleDateString("fr-FR")}</b></div>
+      <div class="sum-row"><span>${data.valid ? "Valable jusqu'au" : "Fin"}</span><b>${end.toLocaleDateString("fr-FR")}</b></div>
+      <div class="sum-row"><span>Client</span><b>${esc(data.client)}</b></div></div>`;
+  }
+
+  /* ---------- Sauvegarde du panier (pour la relance par l'équipe) ---------- */
+  function syncCartRemote() {
+    if (!db || !cartContact) return;
+    clearTimeout(saveCartTimer);
+    saveCartTimer = setTimeout(() => {
+      let key = store.get("cartKey", "");
+      if (!key) { key = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)); store.set("cartKey", key); }
+      db.rpc("save_cart", { p: { key, name: cartContact.name, phone: cartContact.phone, items: cart.map((l) => ({ id: l.id, qty: l.qty })) } }).then(() => {}, () => {});
+    }, 1500);
+  }
+  function captureCartContact(form) {
+    const d = Object.fromEntries(new FormData(form));
+    const digits = (d.phone || "").replace(/\D/g, "").replace(/^(00)?224/, "");
+    if (!/^6\d{8}$/.test(digits) || (d.name || "").trim().length < 2) return;
+    cartContact = { name: d.name.trim(), phone: "+224 " + digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4") };
+    store.set("cartContact", cartContact);
+    syncCartRemote();
+  }
+  function slotDays() {
+    const out = ["Dès que possible"];
+    const d = new Date();
+    for (let i = 0; i < 6; i++) { d.setDate(d.getDate() + (i === 0 ? 0 : 1)); out.push(i === 0 ? "Aujourd'hui" : i === 1 ? "Demain" : d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })); }
+    return out;
   }
 
   function pageWish() {
@@ -1680,6 +1912,10 @@
       case "comparer": html = pageCompare(); break;
       case "devis": case "reparation": case "reprise": html = pageRequest(parts[0]); break;
       case "guide": html = pageGuide(); break;
+      case "packs": html = pagePacks(); break;
+      case "temoignages": html = pageTestimonials(); break;
+      case "suivi": html = pageTrack(query); break;
+      case "garantie": html = pageWarranty(query); break;
       case "favoris": html = pageWish(); break;
       case "a-propos": html = pageAbout(); break;
       case "livraison": html = pageDelivery(); break;
@@ -1708,7 +1944,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],[data-install],[data-google],[data-compare],[data-cmp-clear],[data-receipt],[data-receipt-local],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],[data-install],[data-google],[data-compare],[data-cmp-clear],[data-receipt],[data-receipt-local],[data-pack],[data-price-alert],[data-copy-ref],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) { addToCart(d.add); if (currentPath() === "/panier") render(); }
@@ -1728,6 +1964,9 @@
     else if ("cmpClear" in d) { compare = []; store.set("compare", []); drawCompareBar(); $$("[data-compare]").forEach((b) => b.classList.remove("on")); }
     else if (d.receipt) openReceipt(d.receipt);
     else if (d.receiptLocal) openLocalReceipt(d.receiptLocal);
+    else if (d.pack) addPack(d.pack);
+    else if ("priceAlert" in d) { const box = document.getElementById("price-alert"); if (box) { box.hidden = !box.hidden; el.hidden = true; const i = box.querySelector("input[name=phone]"); if (i) i.focus(); } }
+    else if (d.copyRef) { (navigator.clipboard ? navigator.clipboard.writeText(d.copyRef) : Promise.reject()).then(() => toast("Code copié ✓"), () => toast(`Votre code : ${d.copyRef}`)); }
     else if ("copyCode" in d) {
       (navigator.clipboard ? navigator.clipboard.writeText(S.launchCode) : Promise.reject())
         .then(() => toast(`Code ${S.launchCode} copié`), () => toast(`Votre code : ${S.launchCode}`));
@@ -1786,7 +2025,15 @@
     const form = t.closest("#checkout");
     if (form) {
       store.set("customer", Object.fromEntries(new FormData(form)));
-      if (t.name === "zone") $("#checkout-summary").innerHTML = summaryHTML(totals(t.value), true);
+      if (t.name === "zone") {
+        $("#checkout-summary").innerHTML = summaryHTML(totals(t.value), true);
+        const ret = t.value === "retrait";
+        $("#addr-field").hidden = ret; $("#retrait-note").hidden = !ret;
+        $("#day-label").textContent = ret ? "Jour de retrait" : "Jour de livraison";
+      }
+      if (t.name === "payment") $("#tranches-field").hidden = t.value !== "tranches";
+      if (t.name === "use_points") { usePoints = t.checked; $("#checkout-summary").innerHTML = summaryHTML(totals(form.elements.zone.value), true); }
+      if (t.name === "name" || t.name === "phone") captureCartContact(form);
     }
   });
 
@@ -1803,6 +2050,12 @@
     } else if (f.id === "checkout") {
       e.preventDefault();
       submitCheckout(f);
+    } else if (f.id === "track-form") {
+      e.preventDefault();
+      trackOrder(f);
+    } else if (f.id === "warranty-form") {
+      e.preventDefault();
+      checkWarranty(f);
     } else if (f.id === "request-form") {
       e.preventDefault();
       submitRequest(f);
@@ -1849,7 +2102,7 @@
     $("#mobile-menu-body").innerHTML = [
       ["#/", "home", "Accueil"], ["#/boutique", "bag", "Boutique"], ["#/boutique?promo=1", "tag", "Promotions"],
       ...CATEGORIES.map((c) => [`#/boutique?cat=${c.id}`, c.icon === "laptop" ? "laptop" : "mouse", c.name, true]),
-      ["#/guide", "book", "Guide d'achat"], ["#/comparer", "compare", "Comparateur"], ["#/devis", "building", "Devis entreprises"], ["#/reparation", "tool", "Réparation"], ["#/reprise", "swap", "Reprise de votre PC"],
+      ["#/suivi", "truck", "Suivre ma commande"], ["#/packs", "gift", "Nos packs"], ["#/garantie", "shield", "Vérifier une garantie"], ["#/guide", "book", "Guide d'achat"], ["#/comparer", "compare", "Comparateur"], ["#/devis", "building", "Devis entreprises"], ["#/reparation", "tool", "Réparation"], ["#/reprise", "swap", "Reprise de votre PC"],
       ["#/compte", "user", "Mon compte"], ["#/favoris", "heart", "Mes favoris"], ["#/mes-commandes", "box", "Mes commandes"], ["#/livraison", "truck", "Livraison"], ["#/faq", "help", "FAQ"], ["#/contact", "chat", "Contact"]
     ].map(([h, i, l, sub]) => `<a class="mm-link ${sub ? "sub" : ""}" href="${h}">${ic(i, 18)}${esc(l)}</a>`).join("")
       + `<button class="mm-link mm-install" data-install hidden>${ic("download", 18)}Installer l'application</button>`;
@@ -1859,7 +2112,7 @@
       <div><a href="#/" class="logo">${logo}</a><p>${esc(S.tagline)}.</p><p class="f-line">${ic("pin", 16)}${esc(S.address)}</p><p class="f-line">${ic("phone", 16)}${esc(S.phoneDisplay)}</p><p class="f-line">${ic("mail", 16)}${esc(S.email)}</p>
         <div class="pay-badges"><span>Orange Money</span><span>MTN MoMo</span><span>Espèces</span></div></div>
       <div><h4>Boutique</h4>${CATEGORIES.slice(0, 6).map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}<a href="#/boutique?promo=1">Promotions</a></div>
-      <div><h4>Services</h4><a href="#/devis">Devis entreprises & écoles</a><a href="#/reparation">Réparation et dépannage</a><a href="#/reprise">Reprise de votre PC</a><a href="#/guide">Guide d'achat</a><a href="#/comparer">Comparateur</a></div>
+      <div><h4>Services</h4><a href="#/suivi">Suivre ma commande</a><a href="#/garantie">Vérifier une garantie</a><a href="#/packs">Nos packs</a><a href="#/temoignages">Témoignages</a><a href="#/devis">Devis entreprises & écoles</a><a href="#/reparation">Réparation et dépannage</a><a href="#/reprise">Reprise de votre PC</a><a href="#/guide">Guide d'achat</a><a href="#/comparer">Comparateur</a></div>
       <div><h4>Aide</h4><a href="#/compte">Mon compte</a><a href="#/livraison">Livraison & retours</a><a href="#/faq">FAQ</a><a href="#/mes-commandes">Suivre ma commande</a><a href="#/contact">Contact</a><a href="#/cgv">CGV</a><a href="#/a-propos">À propos</a></div>
       <div><h4>Besoin d'aide ?</h4><p>Notre équipe vous répond sur WhatsApp.</p><a class="btn btn-wa" style="display:inline-flex;color:#fff" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">${ic("chat", 18)}Écrire sur WhatsApp</a><p class="f-line" style="margin-top:12px">${ic("clock", 16)}${esc(S.hours)}</p>
         <div class="f-app" data-install hidden><img src="icons/icon-192.png" alt=""><div><strong>Application Venips</strong><span>Une icône sur votre téléphone ou votre bureau</span></div><span class="f-app-btn">${ic("download", 16)}Installer</span></div>
@@ -1891,7 +2144,7 @@
     const needsAccount = ["/compte", "/commande", "/mes-commandes"].includes(currentPath());
     // 1. Affichage immédiat : dernier catalogue connu (s'il existe) + en-tête complet
     const cached = store.get("catalog", null);
-    if (cached && cached.v === 2) applyCatalog(cached);
+    if (cached && cached.v === 3) applyCatalog(cached);
     renderShell();
     drawInstall();
     drawLaunchBar();

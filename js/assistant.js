@@ -224,17 +224,35 @@
     if (has(t, "epuise", "rupture", "plus en stock", "pas disponible", "revient", "retour en stock", "prevenir", "quand sera")) {
       return `<p>Quand un produit est épuisé, ouvrez sa fiche et cliquez sur <b>« Me prévenir du retour en stock »</b> : nous vous contactons dès son retour.</p>${waBtn(raw, "Demander sur WhatsApp")}`;
     }
+    if (has(t, "pack", "lot ", "ensemble", "combo", "avec souris", "avec sac")) {
+      return `<p>Nos <b>packs</b> regroupent un ordinateur et ses accessoires (souris, sac…) à prix réduit. La réduction s'applique toute seule dans le panier.</p><p><a class="as-link" href="#/packs">Voir les packs</a></p>`;
+    }
+    if (has(t, "retrait", "venir chercher", "recuperer moi", "passer recuperer", "sur place", "en boutique")) {
+      return `<p>Oui ! Choisissez <b>« Retrait en boutique »</b> comme zone au moment de commander : c'est <b>gratuit</b>. Nous vous appelons dès que votre commande est prête.</p><p class="as-small">${esc(S.address)} · ${esc(S.hours || "")}</p>`;
+    }
+    if (has(t, "point", "fidelite", "parrain", "filleul", "code ami", "recompense")) {
+      return `<p><b>Fidélité :</b> vous gagnez 1 % de chaque commande livrée en points, à utiliser sur la suivante (jusqu'à 50 % du montant).</p><p><b>Parrainage :</b> partagez votre code (dans « Mon compte ») : votre proche a -5 % sur sa première commande et vous gagnez 2 % de son achat.</p><p><a class="as-link" href="#/compte">Mon compte</a></p>`;
+    }
+    if (has(t, "plusieurs fois", "en 2 fois", "en 3 fois", "deux fois", "trois fois", "tranche", "credit", "facilite")) {
+      return `<p>Oui, le <b>paiement en 2 ou 3 fois</b> est possible sur accord : choisissez « Paiement en plusieurs fois » à la commande, notre équipe vous appelle pour valider et fixer les dates.</p>${waBtn(raw, "En parler sur WhatsApp")}`;
+    }
+    if (has(t, "certificat", "numero de serie", "verifier ma garantie", "verifier la garantie")) {
+      return `<p>Chaque ordinateur vendu reçoit un <b>certificat de garantie</b> avec son numéro de série. Vérifiez-le à tout moment :</p><p><a class="as-link" href="#/garantie">Vérifier une garantie</a></p>`;
+    }
+    if (has(t, "baisse de prix", "prix baisse", "moins cher plus tard", "promo bientot", "prevenir du prix")) {
+      return `<p>Sur la fiche d'un produit, cliquez sur <b>« Prévenez-moi si le prix baisse »</b> : nous vous écrivons sur WhatsApp dès qu'il baisse.</p>`;
+    }
     if (has(t, "facture", "recu", "bon de commande")) {
       return `<p>Votre <b>bon de commande</b> est disponible juste après la commande, et la <b>facture</b> après la livraison, dans <a href="#/mes-commandes">Mon compte › Mes commandes</a> (bouton « Facture », imprimable en PDF).</p>`;
     }
 
-    if (has(t, "suivre", "suivi", "ma commande", "mon colis", "statut", /vn-?\s?\d{6}/, "ou en est", "pas encore recu", "pas recu")) return answerTracking(t);
+    if (has(t, "suivre", "suivi", "ma commande", "mon colis", "statut", /vn-?\s?\d{6}/, "ou en est", "pas encore recu", "pas recu")) return `<p>Suivez votre commande en direct avec son numéro (VN-…) et votre téléphone :</p><p><a class="as-link" href="#/suivi">Suivre ma commande</a></p>` + answerTracking(t);
     if (has(t, "livr", "delai", "expedi", "envoyer a", "interieur du pays", "frais de port", "kaloum", "dixinn", "matam", "ratoma", "matoto", "coyah", "dubreka", "kindia", "labe", "kankan", "nzerekore", "boke", "mamou")) return answerDelivery(t);
     if (has(t, "pai", "payer", "orange money", "momo", "mtn", "espece", "cash", "carte bancaire", "virement", "credit", "tranche", "acompte", "avance")) {
       if (has(t, "credit", "tranche")) return `${answerPayment()}<p>Pour un paiement en plusieurs fois, parlez-en à notre équipe :</p>${waBtn(raw)}`;
       return answerPayment();
     }
-    if (has(t, "garanti", "retour", "rembours", "echang", "defaut", "panne", "repar", /\bsav\b/, "cass")) return answerWarranty();
+    if (has(t, "garanti", "retour", "rembours", "echang", "defaut", "panne", "repar", /\bsav\b/, "cass")) return answerWarranty() + `<p><a class="as-link" href="#/garantie">Vérifier ma garantie</a></p>`;
     if (has(t, "code promo", "promo", "reduction", "remise", "rabais", "solde", "offre", "bienvenue", "coupon")) return answerPromo();
     if (has(t, "horaire", "heure", "ouvert", "ferme", "adresse", "ou etes", "ou se trouve", "situe", "localisation", "magasin", "boutique physique", "venir", "retrait", "telephone", "numero", "email", "mail", "contact", "joindre")) return answerShop();
     if (has(t, "comment commander", "comment acheter", "passer commande", "passer une commande", "comment faire pour", "comment ca marche", "commander")) {
@@ -260,6 +278,8 @@
     ["Livraison", "Combien coûte la livraison ?"],
     ["Paiement", "Comment payer ?"],
     ["Garantie", "Quelle est la garantie ?"],
+    ["Packs", "Avez-vous des packs ?"],
+    ["Points et parrainage", "Comment marchent les points fidélité ?"],
     ["Quel ordinateur choisir ?", "Quel ordinateur choisir ?"],
     ["Devis entreprise", "Je veux un devis pour mon entreprise"],
     ["Réparation", "Je veux faire réparer mon ordinateur"],

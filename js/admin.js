@@ -211,7 +211,8 @@
   /* ---------- Gabarit ---------- */
   const NAV = [
     ["dashboard", "📊", "Tableau de bord"], ["stats", "📈", "Statistiques"], ["commandes", "🧾", "Commandes"], ["produits", "📦", "Produits"], ["clients", "👥", "Clients"],
-    ["demandes", "📨", "Demandes"], ["avis", "⭐", "Avis clients"],
+    ["demandes", "📨", "Demandes"], ["paniers", "🛒", "Paniers abandonnés"], ["garanties", "🛡️", "Garanties"], ["avis", "⭐", "Avis clients"],
+    ["packs", "🎁", "Packs"], ["temoignages", "💬", "Témoignages"],
     ["categories", "🗂️", "Catégories"], ["livraison", "🚚", "Livraison"], ["promos", "🏷️", "Codes promo"]
   ];
   function renderShell() {
@@ -343,6 +344,10 @@
       else if (tab === "categories") await tabCrud(main, CRUD.categories);
       else if (tab === "livraison") await tabDelivery(main);
       else if (tab === "promos") await tabCrud(main, CRUD.promos);
+      else if (tab === "garanties") await tabWarranties(main);
+      else if (tab === "paniers") await tabCarts(main);
+      else if (tab === "packs") await tabPacks(main);
+      else if (tab === "temoignages") await tabTestimonials(main);
       else if (tab === "demandes") await tabRequests(main);
       else if (tab === "stats") await tabStats(main);
       else if (tab === "avis") await tabReviews(main);
@@ -371,9 +376,22 @@
 
   /* ---------- Tableau de bord ---------- */
   async function tabDashboard(main) {
-    const [orders, products, rq, rv] = await Promise.all([loadOrders(500), loadProducts(),
+    const since = new Date(); since.setDate(since.getDate() - 1); since.setHours(0, 0, 0, 0);
+    const [orders, products, rq, rv, rqY, cartsY] = await Promise.all([loadOrders(500), loadProducts(),
       sb.from("requests").select("id", { count: "exact", head: true }).eq("status", "nouvelle").neq("type", "alerte"),
-      sb.from("reviews").select("id", { count: "exact", head: true }).eq("status", "en_attente")]);
+      sb.from("reviews").select("id", { count: "exact", head: true }).eq("status", "en_attente"),
+      sb.from("requests").select("type").gte("created_at", since.toISOString()),
+      sb.from("carts").select("total").eq("converted", false).gte("updated_at", since.toISOString())]);
+    const ordY = orders.filter((o) => new Date(o.created_at) >= since && o.status !== "annulee");
+    const outY = products.filter((p) => p.auto_hidden).length;
+    const rqTypes = (rqY.data || []).reduce((m, r) => { m[r.type] = (m[r.type] || 0) + 1; return m; }, {});
+    const report = `<div class="box report"><h3>📋 Depuis hier matin</h3><div class="report-grid">
+      <a href="#/commandes"><b>${ordY.length}</b><span>commande${ordY.length > 1 ? "s" : ""} · ${money(ordY.reduce((s, o) => s + Number(o.total), 0))}</span></a>
+      <a href="#/demandes"><b>${(rqY.data || []).length}</b><span>demande${(rqY.data || []).length > 1 ? "s" : ""}${Object.keys(rqTypes).length ? ` (${Object.entries(rqTypes).map(([k, n]) => `${n} ${({ devis: "devis", reparation: "réparation", reprise: "reprise", alerte: "alerte stock", prix: "alerte prix" })[k] || k}`).join(", ")})` : ""}</span></a>
+      <a href="#/paniers"><b>${(cartsY.data || []).length}</b><span>panier${(cartsY.data || []).length > 1 ? "s" : ""} abandonné${(cartsY.data || []).length > 1 ? "s" : ""} · ${money((cartsY.data || []).reduce((s, c) => s + Number(c.total), 0))}</span></a>
+      <a href="#/avis"><b>${rv.count || 0}</b><span>avis à vérifier</span></a>
+      <a href="#/produits"><b>${outY}</b><span>produit${outY > 1 ? "s" : ""} en rupture (masqué${outY > 1 ? "s" : ""})</span></a>
+    </div></div>`;
     const now = new Date();
     const today = now.toDateString();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -390,6 +408,7 @@
         <div class="stat"><small>Chiffre d'affaires du mois</small><strong>${money(monthOrders.reduce((s, o) => s + Number(o.total), 0))}</strong></div>
         <div class="stat ${low.length ? "alert" : ""}"><small>Produits en stock faible</small><strong>${low.length}</strong></div>
       </div>
+      ${report}
       ${rq.count || rv.count ? `<div class="notice" style="margin-bottom:16px">${rq.count ? `📨 <a class="link" href="#/demandes"><b>${rq.count}</b> demande${rq.count > 1 ? "s" : ""} à traiter</a> (devis, réparation, reprise)` : ""}${rq.count && rv.count ? " · " : ""}${rv.count ? `⭐ <a class="link" href="#/avis"><b>${rv.count}</b> avis à vérifier</a>` : ""}</div>` : ""}
       <div class="two-cols">
         <div class="box"><h3>Dernières commandes</h3>
@@ -565,9 +584,12 @@
         <h4>Articles</h4>
         ${o.items.map((i) => `<div class="sum-row"><span>${i.qty} × ${esc(i.name)}</span><span>${money(i.price * i.qty)}</span></div>`).join("")}
         <div class="sum-row"><span>Sous-total</span><span>${money(o.subtotal)}</span></div>
-        ${Number(o.reduction) ? `<div class="sum-row"><span>Code ${esc(o.promo_code)}</span><span>-${money(o.reduction)}</span></div>` : ""}
+        ${Number(o.reduction) ? `<div class="sum-row"><span>Réduction${o.pack_name ? ` · ${esc(o.pack_name)}` : ""}${o.promo_code ? ` · code ${esc(o.promo_code)}${o.referrer_id ? " (parrainage)" : ""}` : ""}</span><span>-${money(o.reduction)}</span></div>` : ""}
+        ${Number(o.points_used) ? `<div class="sum-row"><span>Points fidélité utilisés</span><span>-${money(o.points_used)}</span></div>` : ""}
         <div class="sum-row"><span>Livraison</span><span>${Number(o.delivery) ? money(o.delivery) : "Gratuite"}</span></div>
         <div class="sum-row total"><span>Total</span><span>${money(o.total)}</span></div>
+        <h4 style="margin-top:16px">🛡️ Garanties et numéros de série</h4>
+        <div id="d-warranties"><p class="hint">Chargement…</p></div>
       </div>
       <div>
         <h4>Client</h4>
@@ -599,7 +621,11 @@
       a.href = waUrl(e.target.value);
       a.textContent = `WhatsApp : message « ${STATUSES[e.target.value]} »`;
     });
-    $("#d-invoice", row).addEventListener("click", () => window.VenipsInvoice && window.VenipsInvoice.open(o));
+    $("#d-invoice", row).addEventListener("click", async () => {
+      const { data: w } = await sb.from("warranties").select("*").eq("order_id", o.id);
+      window.VenipsInvoice && window.VenipsInvoice.open({ ...o, warranties: w || [] });
+    });
+    drawOrderWarranties(o, $("#d-warranties", row));
     $("#d-save", row).addEventListener("click", async () => {
       const status = $("#d-status", row).value, admin_note = $("#d-note", row).value.trim() || null;
       const { data, error } = await sb.from("orders").update({ status, admin_note }).eq("id", o.id).select().single();
@@ -628,7 +654,7 @@
   }
 
   /* ---------- Demandes : devis, réparation, reprise, alertes de retour en stock ---------- */
-  const REQ_TYPES = { devis: "🏢 Devis entreprise", reparation: "🔧 Réparation", reprise: "♻️ Reprise", alerte: "🔔 Alerte stock" };
+  const REQ_TYPES = { devis: "🏢 Devis entreprise", reparation: "🔧 Réparation", reprise: "♻️ Reprise", alerte: "🔔 Alerte stock", prix: "📉 Alerte prix" };
   const REQ_STATUS = { nouvelle: "Nouvelle", en_cours: "En cours", traitee: "Traitée", annulee: "Annulée" };
   let reqFilter = { type: "", status: "nouvelle" };
   let reqCache = [];
@@ -662,7 +688,9 @@
       const phone = String(r.phone || "").replace(/\D/g, "");
       const first = String(r.name || "").split(" ")[0];
       const back = p && p.active && p.stock > 0;
-      const msg = r.type === "alerte"
+      const msg = r.type === "prix"
+        ? `Bonjour ${first}, bonne nouvelle : le prix de « ${p ? p.name : "le produit"} » a baissé chez ${S.name} ! Nouveau prix : ${p ? money(p.price) : ""}${p ? ` — ${location.origin}/p/${p.id}` : ""}`
+        : r.type === "alerte"
         ? `Bonjour ${first}, bonne nouvelle : « ${p ? p.name : "le produit"} » est de nouveau disponible chez ${S.name} ! ${p ? `${money(p.price)} — ${location.origin}/#/produit/${p.id}` : ""}`
         : `Bonjour ${first}, c'est ${S.name}. Nous avons bien reçu votre demande D-${r.id} (${(REQ_TYPES[r.type] || "").replace(/^\S+\s/, "").toLowerCase()}).`;
       return `<div class="box req" data-req="${r.id}">
@@ -675,7 +703,7 @@
           <select data-rstatus>${Object.entries(REQ_STATUS).map(([k, v]) => `<option value="${k}" ${r.status === k ? "selected" : ""}>${v}</option>`).join("")}</select>
           <input data-rnote placeholder="Note interne" value="${esc(r.admin_note || "")}">
           <button class="btn btn-primary btn-sm" data-rsave>Enregistrer</button>
-          <a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}">${r.type === "alerte" ? "Prévenir sur WhatsApp" : "Répondre sur WhatsApp"}</a>
+          <a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}">${r.type === "alerte" || r.type === "prix" ? "Prévenir sur WhatsApp" : "Répondre sur WhatsApp"}</a>
         </div>
       </div>`;
     }).join("");
@@ -844,6 +872,238 @@
       drawFlashInfo();
       drawProducts();
     });
+  }
+
+  /* ---------- Garanties et numéros de série ---------- */
+  const wEnd = (w) => { const d = new Date(w.start_date); d.setMonth(d.getMonth() + Number(w.months)); return d; };
+  async function drawOrderWarranties(o, box) {
+    const { data: list } = await sb.from("warranties").select("*").eq("order_id", o.id).order("created_at");
+    const units = [];
+    o.items.forEach((i) => { for (let k = 0; k < Number(i.qty); k++) units.push(i); });
+    const done = list || [];
+    const todo = units.slice(done.length);
+    box.innerHTML = `${done.map((w) => `<div class="sum-row"><span>${esc(w.product_name)}${w.serial ? ` · <b>${esc(w.serial)}</b>` : ""}<br><small class="muted">${esc(w.id)} · jusqu'au ${wEnd(w).toLocaleDateString("fr-FR")}</small></span><button class="btn btn-outline btn-sm" data-wprint="${esc(w.id)}">Certificat</button></div>`).join("")}
+      ${todo.length ? `<div class="w-form">${todo.map((i, k) => `<div class="w-line" data-k="${k}"><span>${esc(i.name)}</span><input data-serial placeholder="N° de série"><select data-months>${[3, 6, 12, 24].map((m) => `<option value="${m}" ${m === 12 ? "selected" : ""}>${m} mois</option>`).join("")}</select></div>`).join("")}
+        <button class="btn btn-primary btn-sm" data-wsave>Créer ${todo.length > 1 ? "les garanties" : "la garantie"}</button>
+        <p class="hint" style="margin:6px 0 0">Le client retrouve son certificat dans « Mon compte », sur sa facture, et peut le vérifier en ligne.</p></div>`
+        : done.length ? "" : `<p class="hint">Aucun article.</p>`}`;
+    const save = $("[data-wsave]", box);
+    if (save) save.addEventListener("click", async () => {
+      const rows = $$(".w-line", box).map((l) => { const i = todo[Number(l.dataset.k)]; return {
+        order_id: o.id, product_id: i.id, product_name: i.name, serial: $("[data-serial]", l).value.trim() || null,
+        months: Number($("[data-months]", l).value), customer_name: o.customer_name, customer_phone: o.customer_phone, user_id: o.user_id || null }; });
+      save.disabled = true;
+      const { error } = await sb.from("warranties").insert(rows);
+      if (error) { save.disabled = false; return fail(error); }
+      toast(`🛡️ ${rows.length} garantie${rows.length > 1 ? "s" : ""} créée${rows.length > 1 ? "s" : ""}`);
+      drawOrderWarranties(o, box);
+    });
+    $$("[data-wprint]", box).forEach((b) => b.addEventListener("click", () => printWarranty(done.find((w) => w.id === b.dataset.wprint))));
+  }
+  function printWarranty(w) {
+    const win = window.open("", "_blank");
+    if (!win) return toast("Autorisez les fenêtres pour imprimer", true);
+    win.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Garantie ${esc(w.id)}</title><style>
+      body{font-family:Arial,sans-serif;background:#eef1f6;margin:0;padding:24px;color:#0f172a}.c{max-width:640px;margin:auto;background:#fff;border:6px double #0f014c;border-radius:14px;padding:36px;text-align:center}
+      .logo{background:#0f014c;border-radius:10px;padding:10px;display:inline-block}.logo img{height:44px;display:block}h1{color:#0f014c;margin:18px 0 4px}table{width:100%;margin:22px 0;border-collapse:collapse;text-align:left}
+      td{padding:9px 6px;border-bottom:1px solid #eef1f6}td:first-child{color:#64748b;width:42%}.n{font-size:12px;color:#64748b;line-height:1.6}button{margin:16px auto 0;display:block;padding:10px 18px;border:0;border-radius:8px;background:#0b9b93;color:#fff;font-weight:700}@media print{button{display:none}body{background:#fff}}</style></head><body>
+      <div class="c"><div class="logo"><img src="${location.origin}/images/logo.jpg" alt=""></div><h1>Certificat de garantie</h1><div>N° <b>${esc(w.id)}</b></div>
+      <table><tr><td>Appareil</td><td><b>${esc(w.product_name)}</b></td></tr><tr><td>N° de série</td><td><b>${esc(w.serial || "—")}</b></td></tr>
+      <tr><td>Client</td><td>${esc(w.customer_name || "")}</td></tr><tr><td>Début de garantie</td><td>${new Date(w.start_date).toLocaleDateString("fr-FR")}</td></tr>
+      <tr><td>Durée</td><td>${w.months} mois</td></tr><tr><td>Valable jusqu'au</td><td><b>${wEnd(w).toLocaleDateString("fr-FR")}</b></td></tr>${w.order_id ? `<tr><td>Commande</td><td>${esc(w.order_id)}</td></tr>` : ""}</table>
+      <p class="n">Vérifiez ce certificat à tout moment sur ${esc(location.host)}/#/garantie.<br>La garantie couvre les défauts de fonctionnement. Elle ne couvre pas la casse, l'oxydation ni une mauvaise utilisation.<br>${esc(S.name)} · ${esc(S.phoneDisplay || "")} · ${esc(S.address || "")}</p></div>
+      <button onclick="print()">Imprimer / PDF</button></body></html>`);
+    win.document.close();
+  }
+  let wQ = "";
+  async function tabWarranties(main) {
+    const { data, error } = await sb.from("warranties").select("*").order("created_at", { ascending: false }).limit(1000);
+    if (error) throw error;
+    main.innerHTML = `
+      <div class="main-head"><h1>Garanties</h1><div class="actions"><button class="btn btn-primary btn-sm" id="w-new">+ Garantie manuelle</button></div></div>
+      <p class="hint" style="margin-top:0">Créez les garanties depuis le détail d'une commande (Commandes › cliquer sur la commande). Ici, retrouvez n'importe quel appareil vendu par son numéro de série.</p>
+      <div class="toolbar-admin"><input type="search" id="w-q" placeholder="N° de série, client, téléphone, appareil, N° de garantie…" value="${esc(wQ)}"></div>
+      <div id="w-form"></div><div class="table-wrap" id="w-table"></div>`;
+    const draw = () => {
+      const q = wQ.trim().toLowerCase();
+      const list = data.filter((w) => !q || `${w.id} ${w.serial} ${w.customer_name} ${w.customer_phone} ${w.product_name} ${w.order_id}`.toLowerCase().includes(q));
+      $("#w-table").innerHTML = list.length ? `<table class="data"><tr><th>Appareil</th><th>N° de série</th><th>Client</th><th>Fin</th><th></th></tr>
+        ${list.map((w) => { const ok = wEnd(w) >= new Date(); return `<tr><td><b>${esc(w.product_name)}</b><br><small class="muted">${esc(w.id)}${w.order_id ? ` · ${esc(w.order_id)}` : ""}</small></td><td>${esc(w.serial || "—")}</td><td>${esc(w.customer_name || "")}<br><small class="muted">${esc(w.customer_phone || "")}</small></td>
+          <td><span class="status ${ok ? "livree" : "annulee"}">${wEnd(w).toLocaleDateString("fr-FR")}</span></td>
+          <td><div class="row-actions"><button class="btn btn-outline btn-sm" data-wp="${esc(w.id)}">Certificat</button><button class="btn btn-danger btn-sm" data-wd="${esc(w.id)}">Supprimer</button></div></td></tr>`; }).join("")}</table>`
+        : `<p class="hint" style="padding:20px">Aucune garantie${q ? " ne correspond" : " pour le moment"}.</p>`;
+      $$("[data-wp]").forEach((b) => b.addEventListener("click", () => printWarranty(data.find((w) => w.id === b.dataset.wp))));
+      $$("[data-wd]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Supprimer cette garantie ?")) return;
+        const { error: e } = await sb.from("warranties").delete().eq("id", b.dataset.wd);
+        if (e) return fail(e);
+        data.splice(data.findIndex((w) => w.id === b.dataset.wd), 1); draw(); toast("Garantie supprimée");
+      }));
+    };
+    $("#w-q").addEventListener("input", (e) => { wQ = e.target.value; draw(); });
+    $("#w-new").addEventListener("click", () => {
+      $("#w-form").innerHTML = `<form class="box" id="wm-form" style="margin-bottom:14px"><h3>Nouvelle garantie</h3><div class="form-grid">
+        <div class="field"><label>Appareil *</label><input name="product_name" required></div><div class="field"><label>N° de série</label><input name="serial"></div>
+        <div class="field"><label>Client</label><input name="customer_name"></div><div class="field"><label>Téléphone</label><input name="customer_phone" placeholder="+224 6…"></div>
+        <div class="field"><label>Date de début</label><input name="start_date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+        <div class="field"><label>Durée</label><select name="months">${[3, 6, 12, 24].map((m) => `<option value="${m}" ${m === 12 ? "selected" : ""}>${m} mois</option>`).join("")}</select></div></div>
+        <div class="row-actions" style="justify-content:flex-start;margin-top:10px"><button class="btn btn-primary btn-sm">Créer</button></div></form>`;
+      $("#wm-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const d = Object.fromEntries(new FormData(e.target));
+        if (!d.product_name.trim()) return toast("Indiquez l'appareil", true);
+        const { data: row, error: er } = await sb.from("warranties").insert({ product_name: d.product_name.trim(), serial: d.serial.trim() || null, customer_name: d.customer_name.trim() || null,
+          customer_phone: d.customer_phone.trim() || null, start_date: d.start_date, months: Number(d.months) }).select().single();
+        if (er) return fail(er);
+        data.unshift(row); $("#w-form").innerHTML = ""; draw(); toast("🛡️ Garantie créée");
+      });
+    });
+    draw();
+  }
+
+  /* ---------- Paniers abandonnés ---------- */
+  async function tabCarts(main) {
+    const { data, error } = await sb.from("carts").select("*").eq("converted", false).order("updated_at", { ascending: false }).limit(300);
+    if (error) throw error;
+    const ago = (d) => { const m = Math.round((Date.now() - new Date(d)) / 60000); return m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`; };
+    main.innerHTML = `<div class="main-head"><h1>Paniers abandonnés</h1></div>
+      <p class="hint" style="margin-top:0">Clients qui ont rempli leur panier et saisi leur téléphone sans terminer la commande. Relancez-les sur WhatsApp : un petit message suffit souvent. Les paniers disparaissent d'ici dès que le client commande.</p>
+      <div id="c-list"></div>`;
+    const draw = () => {
+      $("#c-list").innerHTML = data.length ? data.map((c) => {
+        const first = String(c.name || "").split(" ")[0];
+        const msg = `Bonjour ${first}, c'est ${S.name} 👋 Vous avez laissé dans votre panier : ${(c.items || []).map((i) => i.name).join(", ")}. Avez-vous une question ? Nous pouvons vous livrer rapidement et vous payez à la réception.`;
+        return `<div class="box req" data-cart="${esc(c.key)}"><div class="req-head"><b>${esc(c.name || "Client")}</b><a class="link" href="tel:${esc(String(c.phone).replace(/\s/g, ""))}">${esc(c.phone)}</a><span class="muted">${ago(c.updated_at)}</span><span class="status nouvelle">${money(c.total)}</span></div>
+          <p style="margin:8px 0">${(c.items || []).map((i) => `${i.qty} × ${esc(i.name)}`).join(" · ")}</p>
+          <div class="req-actions"><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${String(c.phone).replace(/\D/g, "")}?text=${encodeURIComponent(msg)}">Relancer sur WhatsApp</a>
+          <button class="btn btn-outline btn-sm" data-cdel>Retirer de la liste</button></div></div>`;
+      }).join("") : `<div class="box"><p class="hint" style="margin:0">Aucun panier abandonné pour le moment 👍</p></div>`;
+      $$("[data-cdel]").forEach((b) => b.addEventListener("click", async () => {
+        const key = b.closest("[data-cart]").dataset.cart;
+        const { error: e } = await sb.from("carts").delete().eq("key", key);
+        if (e) return fail(e);
+        data.splice(data.findIndex((c) => c.key === key), 1); draw();
+      }));
+    };
+    draw();
+  }
+
+  /* ---------- Packs ---------- */
+  async function tabPacks(main) {
+    const [{ data, error }] = await Promise.all([sb.from("packs").select("*").order("position"), cache.products.length ? Promise.resolve() : loadProducts()]);
+    if (error) throw error;
+    const prod = (id) => cache.products.find((p) => p.id === id);
+    main.innerHTML = `<div class="main-head"><h1>Packs</h1><div class="actions"><button class="btn btn-primary btn-sm" id="k-new">+ Nouveau pack</button></div></div>
+      <p class="hint" style="margin-top:0">Un pack regroupe 2 à 6 produits à un prix réduit. Quand le client met tous les produits du pack dans son panier, la réduction s'applique automatiquement (calculée par le serveur).</p>
+      <div id="k-form"></div><div id="k-list"></div>`;
+    const draw = () => {
+      $("#k-list").innerHTML = data.length ? data.map((k) => { const full = k.product_ids.reduce((s, id) => s + Number((prod(id) || {}).price || 0), 0); const missing = k.product_ids.filter((id) => !prod(id) || !prod(id).active);
+        return `<div class="box req"><div class="req-head"><b>🎁 ${esc(k.name)}</b><span class="status ${k.active ? "livree" : "annulee"}">${k.active ? "En ligne" : "Masqué"}</span></div>
+          <p style="margin:6px 0">${k.product_ids.map((id) => esc((prod(id) || {}).name || id)).join(" + ")}</p>
+          <p style="margin:6px 0">Prix du pack : <b>${money(k.price)}</b> · séparément : ${money(full)} · <b class="${full > k.price ? "stock-ok" : "stock-out"}">économie ${money(full - k.price)}</b></p>
+          ${missing.length ? `<p class="notice warn">⚠️ ${missing.length} produit(s) du pack hors ligne : le pack n'est pas proposé tant qu'ils ne sont pas disponibles.</p>` : ""}
+          <div class="req-actions"><button class="btn btn-outline btn-sm" data-kedit="${esc(k.id)}">Modifier</button><button class="btn btn-danger btn-sm" data-kdel="${esc(k.id)}">Supprimer</button></div></div>`; }).join("")
+        : `<div class="box"><p class="hint" style="margin:0">Aucun pack. Exemple : « Pack étudiant » = un ordinateur + une souris + un sac.</p></div>`;
+      $$("[data-kedit]").forEach((b) => b.addEventListener("click", () => form(data.find((k) => k.id === b.dataset.kedit))));
+      $$("[data-kdel]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Supprimer ce pack ?")) return;
+        const { error: e } = await sb.from("packs").delete().eq("id", b.dataset.kdel);
+        if (e) return fail(e);
+        data.splice(data.findIndex((k) => k.id === b.dataset.kdel), 1); draw(); toast("Pack supprimé");
+      }));
+    };
+    const form = (k) => {
+      const isNew = !k; k = k || { id: "", name: "", description: "", product_ids: [], price: "", image_url: "", active: true, position: data.length + 1 };
+      const avail = cache.products.filter((p) => p.active || k.product_ids.includes(p.id));
+      $("#k-form").innerHTML = `<form class="box" id="kf" style="margin-bottom:14px"><h3>${isNew ? "Nouveau pack" : "Modifier le pack"}</h3><div class="form-grid">
+        <div class="field"><label>Nom *</label><input name="name" value="${esc(k.name)}" maxlength="80" placeholder="Pack étudiant" required></div>
+        <div class="field"><label>Prix du pack (GNF) *</label><input name="price" type="number" min="1000" step="1000" value="${esc(k.price)}" required></div>
+        <div class="field full"><label>Description</label><input name="description" value="${esc(k.description || "")}" maxlength="300"></div>
+        <div class="field full"><label>Produits du pack (2 à 6) *</label><input type="search" id="kf-q" placeholder="Filtrer…" style="margin-bottom:6px"><div class="flash-list">${avail.map((p) => `<label class="flash-row" data-name="${esc((p.name + " " + p.brand).toLowerCase())}"><input type="checkbox" name="pid" value="${esc(p.id)}" ${k.product_ids.includes(p.id) ? "checked" : ""}><span class="fr-name">${esc(p.name)}<small class="muted">${money(p.price)} · stock ${p.stock}</small></span><span></span></label>`).join("")}</div></div>
+        <div class="field"><label>Ordre</label><input name="position" type="number" value="${esc(k.position)}"></div>
+        <div class="field"><label class="check"><input type="checkbox" name="active" ${k.active ? "checked" : ""}> En ligne</label></div></div>
+        <p class="hint" id="kf-sum"></p>
+        <div class="row-actions" style="justify-content:flex-start"><button class="btn btn-primary btn-sm">${isNew ? "Créer le pack" : "Enregistrer"}</button><button type="button" class="btn btn-outline btn-sm" id="kf-cancel">Annuler</button></div></form>`;
+      const f = $("#kf");
+      const sum = () => { const ids = $$("input[name=pid]:checked", f).map((i) => i.value); const full = ids.reduce((s, id) => s + Number((prod(id) || {}).price || 0), 0); const pr = Number(f.price.value) || 0;
+        $("#kf-sum").textContent = ids.length ? `${ids.length} produit(s) · prix séparé ${money(full)}${pr ? ` · économie client ${money(full - pr)}` : ""}` : ""; };
+      f.addEventListener("input", sum); sum();
+      $("#kf-q").addEventListener("input", (e) => { const q = e.target.value.toLowerCase(); $$(".flash-row", f).forEach((r) => { r.hidden = q && !r.dataset.name.includes(q); }); });
+      $("#kf-cancel").addEventListener("click", () => { $("#k-form").innerHTML = ""; });
+      f.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const ids = $$("input[name=pid]:checked", f).map((i) => i.value);
+        if (ids.length < 2 || ids.length > 6) return toast("Choisissez entre 2 et 6 produits", true);
+        const full = ids.reduce((s, id) => s + Number((prod(id) || {}).price || 0), 0);
+        const price = parseInt(f.price.value, 10);
+        if (!(price > 0 && price < full)) return toast(`Le prix du pack doit être inférieur au prix séparé (${money(full)})`, true);
+        const row = { name: f.name.value.trim(), description: f.description.value.trim() || null, product_ids: ids, price, active: f.active.checked, position: parseInt(f.position.value, 10) || 0 };
+        const res = isNew ? await sb.from("packs").insert({ ...row, id: slug(row.name) + "-" + Date.now().toString(36).slice(-4) }).select().single()
+          : await sb.from("packs").update(row).eq("id", k.id).select().single();
+        if (res.error) return fail(res.error);
+        if (isNew) data.push(res.data); else Object.assign(k, res.data);
+        $("#k-form").innerHTML = ""; draw(); toast(isNew ? "🎁 Pack créé" : "Pack enregistré");
+      });
+      $("#k-form").scrollIntoView({ behavior: "smooth" });
+    };
+    $("#k-new").addEventListener("click", () => form(null));
+    draw();
+  }
+
+  /* ---------- Témoignages ---------- */
+  async function tabTestimonials(main) {
+    const { data, error } = await sb.from("testimonials").select("*").order("position").order("created_at", { ascending: false });
+    if (error) throw error;
+    main.innerHTML = `<div class="main-head"><h1>Témoignages</h1><div class="actions"><button class="btn btn-primary btn-sm" id="t-new">+ Nouveau témoignage</button></div></div>
+      <p class="hint" style="margin-top:0">Ajoutez les retours de vos clients (avec leur accord) et une photo de livraison. Ils s'affichent sur la page d'accueil et la page « Témoignages ».</p>
+      <div id="t-form"></div><div class="testi-admin" id="t-list"></div>`;
+    const draw = () => {
+      $("#t-list").innerHTML = data.length ? data.map((t) => `<div class="box req">${t.photo_url ? `<img src="${esc(t.photo_url)}" alt="" style="width:100%;max-height:160px;object-fit:cover;border-radius:10px" referrerpolicy="no-referrer">` : ""}
+        <div class="req-head" style="margin-top:8px"><b>${esc(t.name)}</b><span class="muted">${esc(t.city || "")}</span><span style="color:#f59e0b">${"★".repeat(t.rating)}</span><span class="status ${t.active ? "livree" : "annulee"}">${t.active ? "En ligne" : "Masqué"}</span></div>
+        <p class="req-msg">${esc(t.text)}</p><div class="req-actions"><button class="btn btn-outline btn-sm" data-tedit="${t.id}">Modifier</button><button class="btn btn-danger btn-sm" data-tdel="${t.id}">Supprimer</button></div></div>`).join("")
+        : `<div class="box"><p class="hint" style="margin:0">Aucun témoignage pour le moment.</p></div>`;
+      $$("[data-tedit]").forEach((b) => b.addEventListener("click", () => form(data.find((t) => String(t.id) === b.dataset.tedit))));
+      $$("[data-tdel]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Supprimer ce témoignage ?")) return;
+        const { error: e } = await sb.from("testimonials").delete().eq("id", b.dataset.tdel);
+        if (e) return fail(e);
+        data.splice(data.findIndex((t) => String(t.id) === b.dataset.tdel), 1); draw(); toast("Témoignage supprimé");
+      }));
+    };
+    const form = (t) => {
+      const isNew = !t; t = t || { name: "", city: "Conakry", text: "", rating: 5, photo_url: "", active: true, position: 0 };
+      $("#t-form").innerHTML = `<form class="box" id="tf" style="margin-bottom:14px"><h3>${isNew ? "Nouveau témoignage" : "Modifier"}</h3><div class="form-grid">
+        <div class="field"><label>Prénom / nom *</label><input name="name" value="${esc(t.name)}" maxlength="60" required></div>
+        <div class="field"><label>Quartier / ville</label><input name="city" value="${esc(t.city || "")}" maxlength="60"></div>
+        <div class="field full"><label>Témoignage *</label><textarea name="text" rows="3" maxlength="600" required>${esc(t.text)}</textarea></div>
+        <div class="field"><label>Note</label><select name="rating">${[5, 4, 3].map((n) => `<option value="${n}" ${t.rating === n ? "selected" : ""}>${"★".repeat(n)}</option>`).join("")}</select></div>
+        <div class="field"><label>Ordre</label><input name="position" type="number" value="${esc(t.position)}"></div>
+        <div class="field full"><label>Photo (facultatif) : lien d'image ou fichier</label><input name="photo_url" value="${esc(t.photo_url || "")}" placeholder="https://…"><input type="file" id="tf-file" accept="image/*" style="margin-top:6px"></div>
+        <div class="field"><label class="check"><input type="checkbox" name="active" ${t.active ? "checked" : ""}> En ligne</label></div></div>
+        <div class="row-actions" style="justify-content:flex-start"><button class="btn btn-primary btn-sm">${isNew ? "Ajouter" : "Enregistrer"}</button><button type="button" class="btn btn-outline btn-sm" id="tf-cancel">Annuler</button></div></form>`;
+      const f = $("#tf");
+      $("#tf-cancel").addEventListener("click", () => { $("#t-form").innerHTML = ""; });
+      f.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = $("button", f); btn.disabled = true;
+        let photo = normalizeImageUrl ? normalizeImageUrl(f.photo_url.value.trim()) : f.photo_url.value.trim();
+        const file = $("#tf-file").files[0];
+        if (file) {
+          const path = `temoignages/${Date.now()}.${(file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+          const up = await sb.storage.from("produits").upload(path, file, { contentType: file.type, cacheControl: "31536000" });
+          if (up.error) { btn.disabled = false; return fail(up.error); }
+          photo = sb.storage.from("produits").getPublicUrl(path).data.publicUrl;
+        }
+        const row = { name: f.name.value.trim(), city: f.city.value.trim() || null, text: f.text.value.trim(), rating: Number(f.rating.value), photo_url: photo || null, active: f.active.checked, position: parseInt(f.position.value, 10) || 0 };
+        const res = isNew ? await sb.from("testimonials").insert(row).select().single() : await sb.from("testimonials").update(row).eq("id", t.id).select().single();
+        if (res.error) { btn.disabled = false; return fail(res.error); }
+        if (isNew) data.unshift(res.data); else Object.assign(t, res.data);
+        $("#t-form").innerHTML = ""; draw(); toast(isNew ? "💬 Témoignage ajouté" : "Témoignage enregistré");
+      });
+      $("#t-form").scrollIntoView({ behavior: "smooth" });
+    };
+    $("#t-new").addEventListener("click", () => form(null));
+    draw();
   }
 
   /* ---------- Produits ---------- */

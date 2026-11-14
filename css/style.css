@@ -856,3 +856,65 @@ a.stars[data-scroll-reviews] { display: inline-block; }
 .flash-strip .ui-ic { fill: currentColor; }
 .flash-strip .countdown { font-weight: 800; }
 @media (max-width: 760px) { .flash-timer { text-align: left; } .flash-head h2 { font-size: 22px; } .countdown.big b { min-width: 34px; font-size: 18px; } }
+
+/* ======================= Packs, témoignages, suivi, garanties, fidélité ======================= */
+.packs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 18px; }
+.pack { background: #fff; border: 1px solid #eef1f6; border-radius: var(--radius); padding: 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+.pack-imgs { display: flex; align-items: center; gap: 6px; }
+.pack-img { flex: 1; aspect-ratio: 1; max-width: 110px; background: #f8fafc; border-radius: 12px; display: grid; place-items: center; overflow: hidden; }
+.pack-img img { width: 100%; height: 100%; object-fit: contain; }
+.pack-img svg { width: 44px; height: 44px; }
+.pack-plus { font-weight: 800; color: var(--muted); }
+.pack h3 { margin: 6px 0 0; font-size: 18px; }
+.pack ul { margin: 0; padding-left: 18px; font-size: 14px; color: #475569; }
+.pack .price { margin-top: auto; }
+.pack .saving { display: block; color: var(--green); font-weight: 700; font-size: 13px; }
+.testi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.testi { margin: 0; background: #fff; border: 1px solid #eef1f6; border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+.testi-photo { aspect-ratio: 16/10; background: #f1f5f9; }
+.testi-photo img { width: 100%; height: 100%; object-fit: cover; }
+.testi blockquote { margin: 0; padding: 16px 18px 6px; }
+.testi blockquote .ui-ic { color: var(--accent); }
+.testi blockquote p { margin: 6px 0 0; font-size: 15px; line-height: 1.55; }
+.testi figcaption { padding: 4px 18px 18px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: auto; }
+.testi figcaption small { color: var(--muted); }
+.track { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; }
+.track-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.track-head span { color: var(--muted); font-size: 14px; }
+.track-steps { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0; margin: 18px 0; counter-reset: s; }
+.track-steps li { text-align: center; font-size: 13px; color: var(--muted); position: relative; }
+.track-steps li span { display: grid; place-items: center; width: 32px; height: 32px; margin: 0 auto 6px; border-radius: 999px; background: #e2e8f0; font-weight: 700; color: #475569; }
+.track-steps li.done span, .track-steps li.now span { background: var(--green); color: #fff; }
+.track-steps li.now { color: var(--text); font-weight: 700; }
+.track-steps li.now span { box-shadow: 0 0 0 5px #dcfce7; }
+.warranty-card { margin-top: 18px; border-radius: 14px; padding: 16px; border: 2px solid #bbf7d0; background: #f0fdf4; }
+.warranty-card.off { border-color: #fecaca; background: #fef2f2; }
+.wc-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.wc-head .ui-ic { color: var(--green); }
+.warranty-card.off .wc-head .ui-ic { color: var(--red); }
+.wc-head b { display: block; font-size: 18px; }
+.wc-head small { color: var(--muted); }
+.warranty-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; font-size: 14px; }
+.warranty-row > div { flex: 1; }
+.warranty-row small { display: block; color: var(--muted); }
+.warranty-row.ok .ui-ic { color: var(--green); }
+.warranty-row.off { opacity: .65; }
+.warranty-row > span { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.loyalty h3 { display: flex; align-items: center; gap: 8px; margin-top: 0; }
+.loyalty h3 .ui-ic { color: #f59e0b; }
+.loyalty-points { background: linear-gradient(135deg, var(--navy), #2a1590); color: #fff; border-radius: 14px; padding: 16px; }
+.loyalty-points small { color: #c7d2fe; display: block; }
+.loyalty-points strong { font-size: 26px; display: block; }
+.loyalty-points span { color: #c7d2fe; font-size: 13px; }
+.ref-code { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 2px dashed var(--accent); border-radius: 12px; padding: 10px 12px; margin: 10px 0; }
+.ref-code span { color: var(--muted); font-size: 13px; }
+.ref-code b { font-size: 20px; letter-spacing: .08em; color: var(--navy); }
+.points-box { display: flex; gap: 10px; align-items: flex-start; border: 1.5px solid #fde68a; background: #fffbeb; border-radius: 12px; padding: 10px 12px; margin: 10px 0; cursor: pointer; font-size: 14px; }
+.points-box small { display: block; color: #92400e; }
+.retrait-note { flex-direction: row !important; align-items: flex-start; gap: 8px; background: #effcfb; border: 1px solid #b6efe9; border-radius: 12px; padding: 12px; font-size: 14px; }
+.retrait-note .ui-ic { color: var(--accent-dark); flex: none; margin-top: 2px; }
+.retrait-note[hidden], #addr-field[hidden], #tranches-field[hidden] { display: none !important; }
+.price-alert { margin: 0 0 14px; padding: 14px; border: 1px solid var(--line); }
+.price-alert[hidden] { display: none; }
+.section-head h2 .ui-ic { vertical-align: -4px; color: var(--accent); }
+@media (max-width: 760px) { .track-steps li { font-size: 11.5px; } }
