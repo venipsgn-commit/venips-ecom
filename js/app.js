@@ -51,7 +51,10 @@
       ]);
       profile = p;
       isAdmin = adm === true;
-    }
+      isCourier = false;
+      db.rpc("is_courier").then(({ data: c }) => { isCourier = c === true; if (isCourier && currentPath() === "/compte") render(); }, () => {});
+      if (p && p.pro_status === "valide") loadProPrices();
+    } else { PRO = null; }
     const dot = document.getElementById("account-dot");
     if (dot) dot.hidden = !user;
     const adminLink = document.getElementById("admin-link");
@@ -127,9 +130,20 @@
     S.freeDeliveryFrom = snap.freeFrom;
     flashUntil = Number(snap.flashUntil) || 0;
     PACKS = snap.packs || [];
+    POSTS = snap.posts || [];
+    applyPro();
     TESTIMONIALS = snap.testimonials || [];
   }
-  let PACKS = [], TESTIMONIALS = [];
+  let PACKS = [], TESTIMONIALS = [], POSTS = [];
+  async function loadProPrices() {
+    const { data } = await db.from("pro_prices").select("product_id,price");
+    PRO = {}; (data || []).forEach((r) => { PRO[r.product_id] = Number(r.price); });
+    applyPro(); render();
+  }
+  function applyPro() {
+    if (!PRO) return;
+    PRODUCTS.forEach((p) => { const pp = PRO[p.id]; if (pp && pp < p.price && !p.isPro) { p.oldPrice = p.oldPrice || p.price; p.price = pp; p.isPro = true; p.badge = "Prix pro"; } });
+  }
 
   /* ---------- Vente flash ---------- */
   let flashUntil = 0;   // fin de la vente flash (millisecondes)
@@ -156,7 +170,7 @@
     if (!db) return null;
     try {
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("délai dépassé")), 8000));
-      const [c, p, z, s, rv, pk, tm] = await Promise.race([Promise.all([
+      const [c, p, z, s, rv, pk, tm, ps] = await Promise.race([Promise.all([
         db.from("categories").select("*").order("position"),
         // Seuls les produits en ligne et en stock (même pour un administrateur connecté)
         db.from("products").select("*").eq("active", true).gt("stock", 0).order("position").order("created_at"),
@@ -164,7 +178,8 @@
         db.from("shop_settings").select("*"),
         db.from("reviews").select("product_id,rating").eq("status", "publie"),
         db.from("packs").select("*").eq("active", true).order("position"),
-        db.from("testimonials").select("id,name,city,text,photo_url,rating").eq("active", true).order("position").order("created_at", { ascending: false }).limit(30)
+        db.from("testimonials").select("id,name,city,text,photo_url,rating").eq("active", true).order("position").order("created_at", { ascending: false }).limit(30),
+        db.from("posts").select("slug,title,excerpt,image_url,created_at").eq("published", true).order("created_at", { ascending: false }).limit(50)
       ]), timeout]);
       const err = c.error || p.error || z.error || s.error;
       if (err) throw err;
@@ -183,7 +198,8 @@
         freeFrom: free ? Number(free.value) || 0 : S.freeDeliveryFrom,
         flashUntil: (Number((s.data.find((x) => x.key === "flash_until") || {}).value) || 0) * 1000,
         packs: pk && !pk.error ? pk.data.map((x) => ({ id: x.id, name: x.name, description: x.description, ids: x.product_ids || [], price: Number(x.price), image: x.image_url })) : [],
-        testimonials: tm && !tm.error ? tm.data : []
+        testimonials: tm && !tm.error ? tm.data : [],
+        posts: ps && !ps.error ? ps.data : []
       };
       applyCatalog(snap);
       store.set("catalog", snap);
@@ -220,6 +236,10 @@
   let promo = store.get("promo", "");
   let promoPct = store.get("promoPct", 0);
   let compare = store.get("compare", []);
+  let isCourier = false;
+  let PRO = null;                                   // prix entreprises (comptes pro validés)
+  let promoRule = store.get("promoRule", { min: 0, product: null });
+  let gift = store.get("gift", null);               // carte cadeau saisie à la commande { code, balance }
   let cartContact = store.get("cartContact", null);   // nom + téléphone saisis à la commande (relance des paniers)
   let saveCartTimer;   // jusqu'à 3 produits à comparer
   const MAX_QTY = 10;           // limite par produit et par commande (vérifiée aussi par la base)
@@ -417,7 +437,8 @@
     const subtotal = items.reduce((s, l) => s + l.p.price * l.qty, 0);
     const pk = packSaving(items);
     const pct = promo ? promoPct : 0;
-    const promoRed = Math.round(((subtotal - pk.save) * pct) / 100);
+    const promoBase = promoRule.product ? items.filter((l) => l.id === promoRule.product).reduce((s, l) => s + l.p.price * l.qty, 0) : subtotal - pk.save;
+    const promoRed = subtotal >= (promoRule.min || 0) ? Math.round((promoBase * pct) / 100) : 0;
     const reduction = promoRed + pk.save;
     const points = usePoints && profile && profile.points > 0 ? Math.min(Number(profile.points), Math.floor((subtotal - reduction) * 0.5)) : 0;
     const zone = S.deliveryZones.find((z) => z.id === zoneId);
@@ -425,7 +446,9 @@
     const free = S.freeDeliveryFrom > 0 && subtotal - reduction >= S.freeDeliveryFrom && eligible;
     const delivery = zone ? (free ? 0 : zone.fee) : 0;
     const count = items.reduce((s, l) => s + l.qty, 0);
-    return { items, subtotal, pct, reduction, promoRed, pack: pk, points, zone, free, delivery, total: subtotal - reduction - points + delivery, count };
+    const beforeGift = subtotal - reduction - points + delivery;
+    const giftUsed = gift && gift.balance > 0 ? Math.min(gift.balance, beforeGift) : 0;
+    return { items, subtotal, pct, reduction, promoRed, pack: pk, points, zone, free, delivery, giftUsed, total: beforeGift - giftUsed, count };
   }
   let usePoints = false;
 
@@ -605,6 +628,9 @@
           </a>`; }).join("")}</div>
       </div></section>
 
+      <section class="section" style="padding-top:0"><div class="container"><a class="finder-banner" href="#/trouver">
+        <span class="fb-ic">${ic("search2", 26)}</span><div><b>Vous hésitez ? Trouvez votre ordinateur en 3 questions</b><small>Usage, budget, priorité : nous vous proposons les 3 meilleurs modèles en stock.</small></div><span class="btn btn-primary">Commencer ${ic("arrow", 16)}</span></a></div></section>
+
       ${PACKS.length ? `<section class="section" style="padding-top:0"><div class="container">
         <div class="section-head"><div><h2>${ic("gift", 24)} Nos packs</h2><p>Tout ce qu'il faut, à prix réduit</p></div><a href="#/packs" class="link">Tous les packs ${ic("arrow", 16)}</a></div>
         <div class="packs-grid">${PACKS.slice(0, 3).map(packHTML).join("")}</div>
@@ -641,6 +667,11 @@
       ${TESTIMONIALS.length ? `<section class="section" style="padding-top:0"><div class="container">
         <div class="section-head"><div><h2>Ils nous font confiance</h2><p>Nos clients en parlent</p></div><a href="#/temoignages" class="link">Tous les témoignages ${ic("arrow", 16)}</a></div>
         <div class="testi-grid">${TESTIMONIALS.slice(0, 3).map(testiHTML).join("")}</div>
+      </div></section>` : ""}
+
+      ${POSTS.length ? `<section class="section" style="padding-top:0"><div class="container">
+        <div class="section-head"><div><h2>${ic("book", 24)} Nos conseils</h2><p>Bien choisir et bien entretenir son ordinateur</p></div><a href="#/conseils" class="link">Tous les conseils ${ic("arrow", 16)}</a></div>
+        <div class="posts-grid">${POSTS.slice(0, 3).map(postCardHTML).join("")}</div>
       </div></section>` : ""}
 
       <section class="section"><div class="container">
@@ -871,6 +902,7 @@
       ${t.pack && t.pack.save ? `<div class="sum-row"><span>${ic("gift", 14)} ${esc(t.pack.name)}</span><span class="green">-${money(t.pack.save)}</span></div>` : ""}
       ${t.promoRed ? `<div class="sum-row"><span>Code ${esc(promo)} (-${t.pct}%)</span><span class="green">-${money(t.promoRed)}</span></div>` : ""}
       ${t.points ? `<div class="sum-row"><span>${ic("medal", 14)} Points fidélité</span><span class="green">-${money(t.points)}</span></div>` : ""}
+      ${withDelivery && t.giftUsed ? `<div class="sum-row"><span>${ic("gift", 14)} Carte cadeau ${esc(gift.code)}</span><span class="green">-${money(t.giftUsed)}</span></div>` : ""}
       ${withDelivery ? `<div class="sum-row"><span>Livraison${t.zone ? ` · ${esc(t.zone.name)}` : ""}</span><span>${!t.zone ? "—" : t.delivery === 0 ? `<span class="green">Gratuite</span>` : money(t.delivery)}</span></div>` : ""}
       <div class="sum-row total"><span>Total</span><span>${money(withDelivery ? t.total : t.subtotal - t.reduction - t.points)}</span></div>`;
   }
@@ -932,6 +964,8 @@
           <hr style="border:0;border-top:1px solid var(--line);margin:10px 0">
           <div id="checkout-summary">${summaryHTML(t, true)}</div>
           ${promoHTML()}
+          ${gift ? `<div class="promo"><span class="hint" style="flex:1">${ic("gift", 15)} Carte <b>${esc(gift.code)}</b> · solde ${money(gift.balance)}</span><button type="button" class="btn btn-outline" data-gift-remove style="padding:8px 12px">Retirer</button></div>`
+            : `<div class="promo"><input id="gift-code" placeholder="Carte cadeau (VC-…)" aria-label="Carte cadeau"><button type="button" class="btn btn-outline" data-gift-apply style="padding:8px 14px">Utiliser</button></div>`}
           ${user && profile && Number(profile.points) > 0 ? `<label class="points-box"><input type="checkbox" name="use_points" ${usePoints ? "checked" : ""}><span>${ic("medal", 16)} Utiliser mes points fidélité <small>Solde : <b>${money(profile.points)}</b> · jusqu'à 50 % de la commande</small></span></label>` : ""}
           <button type="submit" class="btn btn-wa btn-block" style="margin-top:8px">✓ Confirmer et envoyer sur WhatsApp</button>
           <p class="hint" style="text-align:center;margin-bottom:0">Votre commande sera envoyée à notre équipe sur WhatsApp pour confirmation. Aucun paiement en ligne n'est demandé.</p>
@@ -957,7 +991,9 @@
       ...(o.customer.email ? [`✉️ ${o.customer.email}`] : []),
       `📍 ${o.customer.address} (${o.zone})`,
       ...(o.customer.notes ? [`📝 ${o.customer.notes}`] : []),
-      `💳 Paiement : ${o.payment}`
+      `💳 Paiement : ${o.payment}`,
+      ...(o.gift_used ? [`🎁 Carte cadeau : -${money(o.gift_used)}`] : []),
+      ...(o.paymentId === "acompte" ? [`💰 Acompte à verser (20 %) : ${money(Math.round(o.total * 0.2 / 1000) * 1000)}`] : [])
     ];
     return lines.join("\n");
   }
@@ -1007,7 +1043,7 @@
     let saved = null;
     if (db) {
       const { data: res, error } = await db.rpc("place_order", {
-        p_order: { items: order.items.map((i) => ({ id: i.id, qty: i.qty })), name: customer.name, phone: customer.phone, email: customer.email, address: customer.address, notes: customer.notes, zone: data.zone, payment: pay.name, promo, use_points: usePoints && t.points > 0 }
+        p_order: { items: order.items.map((i) => ({ id: i.id, qty: i.qty })), name: customer.name, phone: customer.phone, email: customer.email, address: customer.address, notes: customer.notes, zone: data.zone, payment: pay.name, promo, use_points: usePoints && t.points > 0, gift: gift ? gift.code : null }
       });
       if (error && error.code === "P0001") {
         // Refus métier (stock insuffisant, produit retiré…) : on prévient le client
@@ -1023,7 +1059,8 @@
       if (error) console.warn("Commande non enregistrée en base, envoi WhatsApp seulement.", error);
       saved = res;
     }
-    if (saved) Object.assign(order, { id: saved.id, items: saved.items, subtotal: saved.subtotal, reduction: saved.reduction, promo: saved.promo || "", delivery: saved.delivery, total: saved.total, zone: saved.zone, points_used: saved.points_used || 0, pack: saved.pack || "" });
+    if (saved) Object.assign(order, { id: saved.id, items: saved.items, subtotal: saved.subtotal, reduction: saved.reduction, promo: saved.promo || "", delivery: saved.delivery, total: saved.total, zone: saved.zone, points_used: saved.points_used || 0, pack: saved.pack || "", gift_used: saved.gift_used || 0 });
+    gift = null; store.set("gift", null); promoRule = { min: 0, product: null }; store.set("promoRule", promoRule);
     if (saved && saved.points_used && profile) profile.points = Math.max(0, Number(profile.points) - saved.points_used);
     usePoints = false;
 
@@ -1042,7 +1079,9 @@
     const o = orders.find((x) => x.id === id);
     if (!o) return pageNotFound();
     document.title = `Commande ${o.id} – ${S.name}`;
-    const payInfo = o.paymentId === "orange" ? `<p>${ic("phone", 16)} Envoyez <b>${money(o.total)}</b> par Orange Money au <b>${esc(S.orangeMoneyNumber)}</b> puis partagez la capture sur WhatsApp.</p>`
+    const deposit = Math.round(o.total * 0.2 / 1000) * 1000;
+    const payInfo = o.paymentId === "acompte" ? `<p>${ic("phone", 16)} Pour réserver, versez l'acompte de <b>${money(deposit)}</b> (20 %) par Orange Money au <b>${esc(S.orangeMoneyNumber)}</b> ou MTN au <b>${esc(S.mtnMoneyNumber)}</b>, puis envoyez la capture sur WhatsApp. Le reste (<b>${money(o.total - deposit)}</b>) se paie à la livraison.</p>`
+      : o.paymentId === "orange" ? `<p>${ic("phone", 16)} Envoyez <b>${money(o.total)}</b> par Orange Money au <b>${esc(S.orangeMoneyNumber)}</b> puis partagez la capture sur WhatsApp.</p>`
       : o.paymentId === "mtn" ? `<p>${ic("phone", 16)} Envoyez <b>${money(o.total)}</b> par MTN MoMo au <b>${esc(S.mtnMoneyNumber)}</b> puis partagez la capture sur WhatsApp.</p>`
       : `<p>${ic("wallet", 16)} Préparez <b>${money(o.total)}</b> en espèces pour la livraison.</p>`;
     return `<div class="container"><div class="panel success">
@@ -1058,6 +1097,7 @@
       </div>
       <button class="btn btn-outline" data-receipt-local="${esc(o.id)}">${ic("receipt", 18)}Bon de commande (PDF)</button>
       <a href="#/suivi?id=${esc(o.id)}" class="btn btn-outline">${ic("truck", 18)}Suivre ma commande</a>
+      ${pushSupported() ? `<button class="btn btn-outline" data-push-order="${esc(o.id)}">${ic("bell", 18)}Me notifier de l'avancement</button>` : ""}
       <a href="#/boutique" class="btn btn-outline">Continuer mes achats</a>
     </div></div>`;
   }
@@ -1142,6 +1182,15 @@
           ${p.referral_code ? `<div class="ref-code"><span>Votre code parrain</span><b>${esc(p.referral_code)}</b><button class="link-btn" data-copy-ref="${esc(p.referral_code)}">Copier</button></div>
           <a class="btn btn-wa btn-block" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Je te recommande ${S.name} pour les ordinateurs à Conakry. Utilise mon code ${p.referral_code} sur www.venips.fr : -5 % sur ta première commande !`)}">${ic("chat", 18)}Partager mon code sur WhatsApp</a>` : ""}
         </div>
+        ${isCourier ? `<a class="panel courier-link" href="#/livreur">${ic("truck", 22)}<div><b>Espace livreur</b><small>Mes livraisons du jour et l'argent encaissé</small></div>${ic("arrow", 18)}</a>` : ""}
+        <div class="panel pro-box">
+          <h3>${ic("building", 20)} Espace entreprise</h3>
+          ${p.pro_status === "valide" ? `<p class="account-note" style="margin:0">${ic("check", 16)} Compte entreprise validé${p.company ? ` (${esc(p.company)})` : ""} : vos prix spéciaux s'affichent dans la boutique.</p>`
+            : p.pro_status === "demande" ? `<p class="hint" style="margin:0">Demande en cours de vérification pour <b>${esc(p.company || "")}</b>. Nous vous contactons rapidement.</p>`
+            : `<p class="hint" style="margin-top:0">Entreprise, école, ONG ou revendeur ? Demandez un compte pro pour accéder à des prix spéciaux.</p>
+               <form id="pro-form" class="promo"><input name="company" placeholder="Nom de l'entreprise" maxlength="120" required><button class="btn btn-outline" style="padding:8px 14px">Demander</button></form>`}
+        </div>
+        ${pushSupported() ? `<button class="btn btn-outline btn-block" data-push-news>${ic("bell", 18)}Recevoir les nouveautés et promos</button>` : ""}
         <div class="panel">
           <h3>Mes informations</h3>
           <p class="hint" style="margin-top:-6px">${esc(user.email)}</p>
@@ -1638,6 +1687,197 @@
     return out;
   }
 
+  /* ---------- Notifications ---------- */
+  const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!S.vapidPublicKey;
+  const pushIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const pushStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  function b64ToBytes(b64) { const pad = "=".repeat((4 - (b64.length % 4)) % 4); const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); }
+  async function subscribePush(opts) {
+    if (!pushSupported()) return toast("Les notifications ne sont pas disponibles sur ce navigateur");
+    if (pushIOS() && !pushStandalone()) return toast("Sur iPhone : installez d'abord l'app Venips (Partager › Sur l'écran d'accueil)");
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") return toast("Notifications refusées : vous pouvez les autoriser dans les réglages du navigateur");
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(S.vapidPublicKey) });
+      const j = sub.toJSON();
+      const { error } = await db.rpc("save_push", { p: { endpoint: j.endpoint, keys: j.keys, order_id: opts.order || null, topics: opts.topics } });
+      if (error) throw error;
+      toast(opts.order ? "🔔 Vous serez notifié à chaque étape de votre commande" : "🔔 Vous recevrez nos nouveautés et promos");
+    } catch (e) { console.warn(e); toast("Activation impossible pour le moment, réessayez"); }
+  }
+
+  /* ---------- Trouver mon PC (3 questions) ---------- */
+  const FINDER = [
+    ["usage", "Pour quoi allez-vous l'utiliser ?", [["etudes", "Études et bureautique"], ["bureau", "Travail de bureau, gestion"], ["mobilite", "Déplacements, réunions"], ["puissance", "Graphisme, montage, programmation"]]],
+    ["budget", "Quel est votre budget ?", [["2000000", "Moins de 2 000 000 GNF"], ["2600000", "Jusqu'à 2 600 000 GNF"], ["3200000", "Jusqu'à 3 200 000 GNF"], ["99000000", "Peu importe, le meilleur"]]],
+    ["prio", "Qu'est-ce qui compte le plus ?", [["prix", "Le prix le plus bas"], ["leger", "La légèreté"], ["autonomie", "La batterie"], ["perf", "La rapidité"]]]
+  ];
+  function pageFinder() {
+    document.title = `Trouver mon PC – ${S.name}`;
+    return `<div class="container page-head">${crumbs([["Trouver mon PC"]])}<h1>Trouvez votre ordinateur en 3 questions</h1></div>
+      <div class="container" style="padding-bottom:48px"><form id="finder-form" class="panel finder">
+        ${FINDER.map(([k, q, opts], i) => `<fieldset><legend><b>${i + 1}</b> ${q}</legend><div class="finder-opts">${opts.map(([v, l], j) => `<label><input type="radio" name="${k}" value="${v}" ${j === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></fieldset>`).join("")}
+        <button class="btn btn-primary btn-block">${ic("search2", 18)}Voir mes recommandations</button>
+      </form><div id="finder-result"></div></div>`;
+  }
+  function runFinder(f) {
+    const a = Object.fromEntries(new FormData(f));
+    const max = Number(a.budget);
+    const cpu = (p) => { const t = norm(`${p.name} ${JSON.stringify(p.specs || {})}`); const tier = /i7|ryzen 7/.test(t) ? 3 : /i5|ryzen 5/.test(t) ? 2 : /i3|ryzen 3/.test(t) ? 1 : 0; const g = Number((t.match(/(\d{1,2})(?:e|th|eme)\s*gen|(\d{1,2})th/) || [])[1] || (t.match(/(\d{1,2})th/) || [])[1] || 0); return { tier, gen: g }; };
+    const light = (p) => /x360|yoga|\b(13|12)\b|840|830|7390|7400|5300|1030|1040| s |carbon|elitebook 8/.test(norm(` ${p.name} `));
+    const batt = (p) => { const m = String((p.specs || {})["Batterie"] || "").match(/(\d{2,3})/); return m ? Number(m[1]) : 70; };
+    const list = PRODUCTS.filter((p) => p.category === "ordinateurs" && p.stock > 0).map((p) => {
+      const c = cpu(p); let s = 0;
+      const need = { etudes: 1, bureau: 2, mobilite: 2, puissance: 3 }[a.usage];
+      s += c.tier >= need ? 30 : -25 * (need - c.tier); s += Math.min(c.gen, 12) * 2;
+      if (a.usage === "mobilite" && light(p)) s += 20;
+      if (p.price > max) s -= 80 + (p.price - max) / 20000;
+      if (a.prio === "prix") s -= p.price / 60000;
+      if (a.prio === "leger" && light(p)) s += 25;
+      if (a.prio === "autonomie") s += (batt(p) - 70) / 2;
+      if (a.prio === "perf") s += c.tier * 10 + c.gen;
+      if (p.rating) s += p.rating * 2;
+      return { p, s };
+    }).sort((x, y) => y.s - x.s).slice(0, 3);
+    const box = document.getElementById("finder-result");
+    box.innerHTML = list.length ? `<div class="section-head" style="margin-top:24px"><div><h2>Nos recommandations</h2><p>Classés pour votre usage et votre budget</p></div>
+        ${list.length > 1 ? `<button class="btn btn-outline btn-sm" data-finder-compare="${list.map((x) => x.p.id).join(",")}">${ic("compare", 16)}Comparer ces modèles</button>` : ""}</div>
+      <div class="grid">${list.map((x, i) => cardHTML(x.p).replace('<article class="card">', `<article class="card"><span class="finder-rank">${i === 0 ? "★ Meilleur choix" : `n° ${i + 1}`}</span>`)).join("")}</div>
+      <p class="hint">Besoin d'un avis ? <a class="link" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, j'hésite entre : ${list.map((x) => niceName(x.p.name)).join(", ")}. Pouvez-vous me conseiller ?`)}">Demandez-nous sur WhatsApp</a>.</p>`
+      : `<p class="hint">Aucun ordinateur en stock pour le moment.</p>`;
+    box.scrollIntoView({ behavior: "smooth" });
+  }
+
+  /* ---------- Cartes cadeaux ---------- */
+  function pageGift() {
+    document.title = `Cartes cadeaux – ${S.name}`;
+    const prof = profile || {};
+    return `<div class="container page-head">${crumbs([["Cartes cadeaux"]])}<h1>Offrez une carte cadeau ${esc(S.name)}</h1><p class="hint">Valable 1 an sur tout le site, utilisable en une ou plusieurs fois.</p></div>
+      <div class="container cart-layout"><div class="panel">
+        <div id="gift-msg"></div>
+        <form id="gift-form" novalidate>
+          <fieldset class="finder-opts gift-amounts">${[100000, 250000, 500000, 1000000].map((v, i) => `<label><input type="radio" name="amount" value="${v}" ${i === 1 ? "checked" : ""}><span>${money(v)}</span></label>`).join("")}
+            <label><input type="radio" name="amount" value="autre"><span>Autre montant</span></label></fieldset>
+          <div class="field" id="gift-other" hidden><label for="g-other">Montant (de 50 000 à 10 000 000 GNF)</label><input id="g-other" name="other" type="number" min="50000" max="10000000" step="10000"></div>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field"><label for="g-bn">Votre nom *</label><input id="g-bn" name="buyer_name" value="${esc(prof.full_name || "")}" required></div>
+            <div class="field"><label for="g-bp">Votre téléphone *</label><input id="g-bp" name="buyer_phone" type="tel" placeholder="6XX XX XX XX" value="${esc((prof.phone || "").replace(/^\+224\s?/, ""))}" required></div>
+            <div class="field"><label for="g-rn">Pour (prénom)</label><input id="g-rn" name="recipient_name"></div>
+            <div class="field"><label for="g-rp">Son téléphone (facultatif)</label><input id="g-rp" name="recipient_phone" type="tel" placeholder="6XX XX XX XX"></div>
+            <div class="field full"><label for="g-msg">Petit message</label><input id="g-msg" name="message" maxlength="300" placeholder="Joyeux anniversaire !"></div>
+          </div>
+          <button class="btn btn-primary btn-block" style="margin-top:14px">${ic("gift", 18)}Commander la carte cadeau</button>
+          <p class="hint" style="text-align:center">Payez par Orange Money ou MTN : la carte est activée dès réception du paiement.</p>
+        </form></div>
+        <div class="panel" style="align-self:start"><h3>Déjà une carte ?</h3><p class="hint">Saisissez son code (VC-…) au moment de commander, dans le récapitulatif de la commande.</p><a href="#/boutique" class="btn btn-outline btn-block">Choisir un produit</a></div>
+      </div>`;
+  }
+  async function submitGift(f) {
+    const d = Object.fromEntries(new FormData(f));
+    const fmt = (v) => { const g = (v || "").replace(/\D/g, "").replace(/^(00)?224/, ""); return /^6\d{8}$/.test(g) ? "+224 " + g.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4") : null; };
+    const msg = document.getElementById("gift-msg");
+    const fail = (m) => { msg.innerHTML = `<div class="checkout-error">${ic("alert", 20)}<div><p style="margin:0">${esc(m)}</p></div></div>`; };
+    const amount = d.amount === "autre" ? Number(d.other) : Number(d.amount);
+    const bp = fmt(d.buyer_phone);
+    if (!bp) return fail("Votre numéro guinéen est invalide (9 chiffres, commence par 6).");
+    if (d.recipient_phone && !fmt(d.recipient_phone)) return fail("Le numéro du bénéficiaire est invalide.");
+    const { data, error } = await db.rpc("request_gift_card", { p: { amount, buyer_name: d.buyer_name, buyer_phone: bp, recipient_name: d.recipient_name, recipient_phone: fmt(d.recipient_phone) || "", message: d.message } });
+    if (error) return fail(error.code === "P0001" ? error.message : "Envoi impossible, réessayez.");
+    f.closest(".panel").innerHTML = `<div class="request-ok"><div class="check">${ic("gift", 32)}</div><h2>Carte cadeau réservée !</h2>
+      <p>Code : <b class="gift-code">${esc(data.code)}</b> · ${money(data.amount)}</p>
+      <p>Pour l'activer, envoyez <b>${money(data.amount)}</b> par Orange Money au <b>${esc(S.orangeMoneyNumber)}</b> ou MTN au <b>${esc(S.mtnMoneyNumber)}</b>, puis la capture sur WhatsApp.</p>
+      <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, j'ai commandé la carte cadeau ${data.code} de ${money(data.amount)}. Voici la capture du paiement.`)}">${ic("chat", 18)}Envoyer la capture sur WhatsApp</a></div>`;
+  }
+
+  /* ---------- Conseils (blog) ---------- */
+  function postCardHTML(p) {
+    return `<a class="post-card" href="#/conseils/${esc(p.slug)}">${p.image_url ? `<div class="post-img"><img src="${esc(p.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>` : `<div class="post-img post-ph">${ic("book", 34)}</div>`}
+      <div><h3>${esc(p.title)}</h3>${p.excerpt ? `<p>${esc(p.excerpt)}</p>` : ""}<span class="link">Lire ${ic("arrow", 14)}</span></div></a>`;
+  }
+  function pagePosts() {
+    document.title = `Conseils – ${S.name}`;
+    return `<div class="container page-head">${crumbs([["Conseils"]])}<h1>Nos conseils</h1></div>
+      <div class="container" style="padding-bottom:48px">${POSTS.length ? `<div class="posts-grid">${POSTS.map(postCardHTML).join("")}</div>` : `<p class="hint">Nos premiers articles arrivent bientôt.</p>`}</div>`;
+  }
+  function renderBody(text) {
+    const out = []; let list = [];
+    const flush = () => { if (list.length) { out.push(`<ul>${list.join("")}</ul>`); list = []; } };
+    String(text || "").split(/\n/).forEach((line) => {
+      const l = line.trim();
+      if (!l) return flush();
+      if (l.startsWith("## ")) { flush(); out.push(`<h2>${esc(l.slice(3))}</h2>`); }
+      else if (/^[-•] /.test(l)) list.push(`<li>${esc(l.slice(2))}</li>`);
+      else { flush(); out.push(`<p>${esc(l).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</p>`); }
+    });
+    flush();
+    return out.join("");
+  }
+  function pagePost(slug) {
+    const meta = POSTS.find((p) => p.slug === slug);
+    document.title = `${meta ? meta.title : "Conseil"} – ${S.name}`;
+    setTimeout(async () => {
+      const box = document.getElementById("post-body");
+      if (!box || !db) return;
+      const { data } = await db.from("posts").select("title,body,image_url,created_at").eq("slug", slug).eq("published", true).maybeSingle();
+      if (!data) { box.innerHTML = `<p class="hint">Article introuvable.</p>`; return; }
+      document.title = `${data.title} – ${S.name}`;
+      box.innerHTML = `<h1>${esc(data.title)}</h1><p class="hint">${new Date(data.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>
+        ${data.image_url ? `<img class="post-hero" src="${esc(data.image_url)}" alt="" referrerpolicy="no-referrer">` : ""}${renderBody(data.body)}
+        <div class="post-cta"><b>Besoin d'un conseil personnalisé ?</b><a class="btn btn-primary" href="#/trouver">${ic("search2", 18)}Trouver mon PC</a><a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name}, j'ai lu votre article « ${data.title} » et j'ai une question.`)}">${ic("chat", 18)}WhatsApp</a></div>`;
+    });
+    return `<div class="container page-head">${crumbs([["Conseils", "#/conseils"], [meta ? meta.title : "Article"]])}</div>
+      <div class="container" style="padding-bottom:48px"><article class="prose post" id="post-body"><p class="hint">Chargement…</p></article></div>`;
+  }
+
+  /* ---------- Espace livreur ---------- */
+  function pageCourier() {
+    document.title = `Espace livreur – ${S.name}`;
+    if (!user) { setTimeout(() => { location.hash = "#/compte"; }); return ""; }
+    setTimeout(loadCourier);
+    return `<div class="container page-head">${crumbs([["Espace livreur"]])}<h1>Mes livraisons</h1></div>
+      <div class="container" style="padding-bottom:48px" id="courier-box"><p class="hint">Chargement…</p></div>`;
+  }
+  async function loadCourier() {
+    const box = document.getElementById("courier-box");
+    if (!box) return;
+    const [{ data: isC }, { data, error }] = await Promise.all([db.rpc("is_courier"), db.rpc("courier_orders")]);
+    isCourier = isC === true;
+    if (error) { box.innerHTML = `<p class="hint">Impossible de charger vos livraisons.</p>`; return; }
+    if (!isCourier) { box.innerHTML = `<div class="empty"><div class="big">${ic("truck", 44)}</div><h3>Espace réservé aux livreurs</h3><p class="hint">Demandez à l'équipe ${esc(S.name)} d'activer votre compte livreur.</p></div>`; return; }
+    const today = new Date().toDateString();
+    const done = data.filter((o) => o.status === "livree");
+    const doneToday = done.filter((o) => new Date(o.collected_at).toDateString() === today);
+    const cashToday = doneToday.reduce((s, o) => s + Number(o.collected_amount || 0), 0);
+    const owed = done.filter((o) => !o.remitted_at).reduce((s, o) => s + Number(o.collected_amount || 0), 0);
+    const todo = data.filter((o) => o.status !== "livree");
+    const due = (o) => Math.max(0, Number(o.total) - Number(o.deposit_paid || 0));
+    box.innerHTML = `<div class="courier-stats"><div><small>À livrer</small><b>${todo.length}</b></div><div><small>Livrées aujourd'hui</small><b>${doneToday.length}</b></div><div><small>Encaissé aujourd'hui</small><b>${money(cashToday)}</b></div><div><small>À remettre à la boutique</small><b>${money(owed)}</b></div></div>
+      ${todo.length ? todo.map((o) => `<div class="panel courier-order" data-co="${esc(o.id)}">
+        <div class="co-head"><b>${esc(o.id)}</b><span class="status-pill ${o.status}">${o.status === "en_livraison" ? "En route" : "À livrer"}</span></div>
+        <p><b>${esc(o.name)}</b> · <a class="link" href="tel:${esc(String(o.phone).replace(/\s/g, ""))}">${ic("phone", 14)} ${esc(o.phone)}</a> · <a class="link" target="_blank" rel="noopener" href="https://wa.me/${String(o.phone).replace(/\D/g, "")}">WhatsApp</a></p>
+        <p>${ic("pin", 14)} ${esc(o.address)} (${esc(o.zone)})</p>
+        ${o.notes ? `<p class="hint">📝 ${esc(o.notes)}</p>` : ""}
+        <p>${(o.items || []).map((i) => `${i.qty} × ${esc(i.name)}`).join(" · ")}</p>
+        <p class="co-due">À encaisser : <b>${money(due(o))}</b> <small>(${esc(o.payment)}${Number(o.deposit_paid) ? ` · acompte déjà reçu ${money(o.deposit_paid)}` : ""})</small></p>
+        <div class="co-actions">
+          ${o.status === "confirmee" ? `<button class="btn btn-dark btn-sm" data-co-route>${ic("truck", 16)}Je pars livrer</button>` : ""}
+          <button class="btn btn-primary btn-sm" data-co-done>${ic("check", 16)}Livrée</button>
+          <button class="btn btn-outline btn-sm" data-co-fail>Échec</button>
+        </div>
+        <form class="co-form" hidden><div class="form-grid"><div class="field"><label>Montant encaissé (GNF)</label><input name="amount" type="number" min="0" step="1000" value="${due(o)}"></div>
+          <div class="field"><label>Moyen</label><select name="method"><option>Espèces</option><option>Orange Money</option><option>MTN MoMo</option><option>Déjà payé</option></select></div></div>
+          <button class="btn btn-primary btn-block" style="margin-top:8px">Confirmer la livraison</button></form>
+      </div>`).join("") : `<div class="empty" style="box-shadow:none"><div class="big">${ic("check", 44)}</div><h3>Aucune livraison en attente</h3></div>`}
+      ${doneToday.length ? `<h3 style="margin-top:20px">Livrées aujourd'hui</h3>${doneToday.map((o) => `<div class="sum-row"><span>${esc(o.id)} · ${esc(o.name)}</span><span>${money(o.collected_amount)} · ${esc(o.collected_method || "")}</span></div>`).join("")}` : ""}`;
+  }
+  async function courierAction(id, action, amount, method, note) {
+    const { error } = await db.rpc("courier_action", { p_order: id, p_action: action, p_amount: amount ?? null, p_method: method ?? null, p_note: note ?? null });
+    if (error) return toast(error.code === "P0001" ? error.message : "Action impossible, réessayez");
+    toast(action === "livree" ? "✓ Livraison enregistrée" : action === "route" ? "🚚 Bonne route !" : "Échec signalé à l'équipe");
+    loadCourier();
+  }
+
   function pageWish() {
     const list = wish.map(byId).filter(Boolean);
     document.title = `Favoris – ${S.name}`;
@@ -1913,6 +2153,10 @@
       case "devis": case "reparation": case "reprise": html = pageRequest(parts[0]); break;
       case "guide": html = pageGuide(); break;
       case "packs": html = pagePacks(); break;
+      case "trouver": html = pageFinder(); break;
+      case "cadeau": html = pageGift(); break;
+      case "conseils": html = parts[1] ? pagePost(decodeURIComponent(parts[1])) : pagePosts(); break;
+      case "livreur": html = pageCourier(); break;
       case "temoignages": html = pageTestimonials(); break;
       case "suivi": html = pageTrack(query); break;
       case "garantie": html = pageWarranty(query); break;
@@ -1944,7 +2188,7 @@
 
   /* ---------- Événements ---------- */
   document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],[data-install],[data-google],[data-compare],[data-cmp-clear],[data-receipt],[data-receipt-local],[data-pack],[data-price-alert],[data-copy-ref],#filter-toggle");
+    const el = e.target.closest("[data-add],[data-wish],[data-inc],[data-dec],[data-remove],[data-padd],[data-pbuy],[data-pinc],[data-pdec],[data-close],[data-promo-remove],[data-logout],[data-forgot],[data-img],[data-open-viewer],[data-copy-code],[data-apply-code],[data-install],[data-google],[data-compare],[data-cmp-clear],[data-receipt],[data-receipt-local],[data-pack],[data-price-alert],[data-copy-ref],[data-gift-apply],[data-gift-remove],[data-push-order],[data-push-news],[data-finder-compare],[data-co-route],[data-co-done],[data-co-fail],#filter-toggle");
     if (!el) return;
     const d = el.dataset;
     if (d.add) { addToCart(d.add); if (currentPath() === "/panier") render(); }
@@ -1955,7 +2199,7 @@
     else if ("pinc" in d || "pdec" in d) { const i = $("#pqty"); i.value = Math.max(1, Math.min(Number(i.max), Number(i.value) + ("pinc" in d ? 1 : -1))); }
     else if (d.padd) addToCart(d.padd, Math.max(1, Number($("#pqty").value) || 1));
     else if (d.pbuy) { addToCart(d.pbuy, Math.max(1, Number($("#pqty").value) || 1)); location.hash = "#/commande"; }
-    else if ("promoRemove" in d) { promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
+    else if ("promoRemove" in d) { promoRule = { min: 0, product: null }; store.set("promoRule", promoRule); promo = ""; promoPct = 0; store.set("promo", ""); store.set("promoPct", 0); refreshCartViews(); }
     else if ("img" in d) showImage(+d.img);
     else if ("openViewer" in d) openViewer(galleryIndex);
     else if ("install" in d) { closeDrawers(); installApp(); }
@@ -1965,6 +2209,22 @@
     else if (d.receipt) openReceipt(d.receipt);
     else if (d.receiptLocal) openLocalReceipt(d.receiptLocal);
     else if (d.pack) addPack(d.pack);
+    else if ("giftApply" in d) {
+      const code = ($("#gift-code") || {}).value || "";
+      if (code.trim().length < 6) return toast("Saisissez le code de la carte (VC-…)");
+      db.rpc("check_gift", { p_code: code }).then(({ data }) => {
+        if (!data) return toast("Carte invalide, épuisée ou pas encore activée");
+        gift = { code: data.code, balance: Number(data.balance) }; store.set("gift", gift);
+        toast(`🎁 Carte ${data.code} : ${money(data.balance)} disponibles`); refreshCartViews();
+      });
+    }
+    else if ("giftRemove" in d) { gift = null; store.set("gift", null); refreshCartViews(); }
+    else if (d.pushOrder) subscribePush({ order: d.pushOrder, topics: ["commande"] });
+    else if ("pushNews" in d) subscribePush({ topics: ["news"] });
+    else if (d.finderCompare) { compare = d.finderCompare.split(",").slice(0, 3); store.set("compare", compare); location.hash = "#/comparer"; }
+    else if ("coRoute" in d) courierAction(el.closest("[data-co]").dataset.co, "route");
+    else if ("coDone" in d) { const f = el.closest("[data-co]").querySelector(".co-form"); f.hidden = !f.hidden; }
+    else if ("coFail" in d) { const why = prompt("Pourquoi la livraison a échoué ? (client absent, injoignable…)"); if (why !== null) courierAction(el.closest("[data-co]").dataset.co, "echec", null, null, why); }
     else if ("priceAlert" in d) { const box = document.getElementById("price-alert"); if (box) { box.hidden = !box.hidden; el.hidden = true; const i = box.querySelector("input[name=phone]"); if (i) i.focus(); } }
     else if (d.copyRef) { (navigator.clipboard ? navigator.clipboard.writeText(d.copyRef) : Promise.reject()).then(() => toast("Code copié ✓"), () => toast(`Votre code : ${d.copyRef}`)); }
     else if ("copyCode" in d) {
@@ -1986,8 +2246,15 @@
   async function applyPromo(code) {
     let pct = 0;
     if (db) {
-      const { data, error } = await db.rpc("check_promo", { p_code: code });
-      pct = error ? S.promoCodes[code] || 0 : Number(data) || 0;
+      const { data, error } = await db.rpc("promo_info", { p_code: code });
+      pct = error ? S.promoCodes[code] || 0 : Number((data || {}).pct) || 0;
+      if (pct && data) {
+        const t0 = totals();
+        if (data.min && t0.subtotal < data.min) return toast(`Ce code demande un panier d'au moins ${money(data.min)}`);
+        if (data.product && !cart.some((l) => l.id === data.product)) { const p0 = byId(data.product); return toast(`Ce code s'applique à « ${p0 ? niceName(p0.name) : "un produit précis"} » : ajoutez-le au panier`); }
+        promoRule = { min: Number(data.min) || 0, product: data.product || null };
+        store.set("promoRule", promoRule);
+      }
     } else pct = S.promoCodes[code] || 0;
     if (!pct) return toast("Code promo invalide");
     promo = code; promoPct = pct;
@@ -2022,6 +2289,7 @@
         p.set("stock", $("input[name=stock]", f).checked ? "1" : "");
       });
     }
+    if (t.name === "amount" && t.closest("#gift-form")) { const o = document.getElementById("gift-other"); o.hidden = t.value !== "autre"; if (!o.hidden) o.querySelector("input").focus(); }
     const form = t.closest("#checkout");
     if (form) {
       store.set("customer", Object.fromEntries(new FormData(form)));
@@ -2050,6 +2318,23 @@
     } else if (f.id === "checkout") {
       e.preventDefault();
       submitCheckout(f);
+    } else if (f.id === "finder-form") {
+      e.preventDefault();
+      runFinder(f);
+    } else if (f.id === "gift-form") {
+      e.preventDefault();
+      submitGift(f);
+    } else if (f.id === "pro-form") {
+      e.preventDefault();
+      db.rpc("request_pro", { p_company: new FormData(f).get("company") }).then(({ error }) => {
+        if (error) return toast(error.code === "P0001" ? error.message : "Envoi impossible, réessayez");
+        if (profile) { profile.pro_status = profile.pro_status === "valide" ? "valide" : "demande"; profile.company = String(new FormData(f).get("company")); }
+        toast("Demande envoyée : nous vous contactons rapidement"); render();
+      });
+    } else if (f.classList.contains("co-form")) {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(f));
+      courierAction(f.closest("[data-co]").dataset.co, "livree", Math.max(0, parseInt(d.amount, 10) || 0), d.method);
     } else if (f.id === "track-form") {
       e.preventDefault();
       trackOrder(f);
@@ -2098,11 +2383,11 @@
       : `<span class="logo-mark">${esc(S.logoText)}</span><span>${esc(first)}${rest.length ? ` <span class="accent">${esc(rest.join(" "))}</span>` : ""}</span>`;
     $("#logo").innerHTML = logo;
     $("#topbar-phone").innerHTML = `${ic("phone", 14)} ${esc(S.phoneDisplay)} <span class="sep">·</span> ${ic("clock", 14)} ${esc(S.hours.split("·")[0].trim())}`;
-    $("#catnav").innerHTML = `<div class="catnav-inner"><a href="#/boutique">Tout</a><a href="#/boutique?promo=1">${ic("tag", 15)}Promos</a>${CATEGORIES.map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}<a href="#/guide">${ic("book", 15)}Guide d'achat</a><a href="#/devis">${ic("building", 15)}Entreprises</a><a href="#/reparation">${ic("tool", 15)}Réparation</a></div>`;
+    $("#catnav").innerHTML = `<div class="catnav-inner"><a href="#/boutique">Tout</a><a href="#/boutique?promo=1">${ic("tag", 15)}Promos</a>${CATEGORIES.map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}<a href="#/trouver">${ic("search2", 15)}Trouver mon PC</a><a href="#/guide">${ic("book", 15)}Guide d'achat</a><a href="#/devis">${ic("building", 15)}Entreprises</a><a href="#/reparation">${ic("tool", 15)}Réparation</a></div>`;
     $("#mobile-menu-body").innerHTML = [
       ["#/", "home", "Accueil"], ["#/boutique", "bag", "Boutique"], ["#/boutique?promo=1", "tag", "Promotions"],
       ...CATEGORIES.map((c) => [`#/boutique?cat=${c.id}`, c.icon === "laptop" ? "laptop" : "mouse", c.name, true]),
-      ["#/suivi", "truck", "Suivre ma commande"], ["#/packs", "gift", "Nos packs"], ["#/garantie", "shield", "Vérifier une garantie"], ["#/guide", "book", "Guide d'achat"], ["#/comparer", "compare", "Comparateur"], ["#/devis", "building", "Devis entreprises"], ["#/reparation", "tool", "Réparation"], ["#/reprise", "swap", "Reprise de votre PC"],
+      ["#/trouver", "search2", "Trouver mon PC"], ["#/cadeau", "gift", "Cartes cadeaux"], ["#/conseils", "book", "Conseils"], ["#/suivi", "truck", "Suivre ma commande"], ["#/packs", "gift", "Nos packs"], ["#/garantie", "shield", "Vérifier une garantie"], ["#/guide", "book", "Guide d'achat"], ["#/comparer", "compare", "Comparateur"], ["#/devis", "building", "Devis entreprises"], ["#/reparation", "tool", "Réparation"], ["#/reprise", "swap", "Reprise de votre PC"],
       ["#/compte", "user", "Mon compte"], ["#/favoris", "heart", "Mes favoris"], ["#/mes-commandes", "box", "Mes commandes"], ["#/livraison", "truck", "Livraison"], ["#/faq", "help", "FAQ"], ["#/contact", "chat", "Contact"]
     ].map(([h, i, l, sub]) => `<a class="mm-link ${sub ? "sub" : ""}" href="${h}">${ic(i, 18)}${esc(l)}</a>`).join("")
       + `<button class="mm-link mm-install" data-install hidden>${ic("download", 18)}Installer l'application</button>`;
@@ -2112,7 +2397,7 @@
       <div><a href="#/" class="logo">${logo}</a><p>${esc(S.tagline)}.</p><p class="f-line">${ic("pin", 16)}${esc(S.address)}</p><p class="f-line">${ic("phone", 16)}${esc(S.phoneDisplay)}</p><p class="f-line">${ic("mail", 16)}${esc(S.email)}</p>
         <div class="pay-badges"><span>Orange Money</span><span>MTN MoMo</span><span>Espèces</span></div></div>
       <div><h4>Boutique</h4>${CATEGORIES.slice(0, 6).map((c) => `<a href="#/boutique?cat=${c.id}">${esc(c.name)}</a>`).join("")}<a href="#/boutique?promo=1">Promotions</a></div>
-      <div><h4>Services</h4><a href="#/suivi">Suivre ma commande</a><a href="#/garantie">Vérifier une garantie</a><a href="#/packs">Nos packs</a><a href="#/temoignages">Témoignages</a><a href="#/devis">Devis entreprises & écoles</a><a href="#/reparation">Réparation et dépannage</a><a href="#/reprise">Reprise de votre PC</a><a href="#/guide">Guide d'achat</a><a href="#/comparer">Comparateur</a></div>
+      <div><h4>Services</h4><a href="#/trouver">Trouver mon PC</a><a href="#/cadeau">Cartes cadeaux</a><a href="#/conseils">Conseils</a><a href="#/suivi">Suivre ma commande</a><a href="#/garantie">Vérifier une garantie</a><a href="#/packs">Nos packs</a><a href="#/temoignages">Témoignages</a><a href="#/devis">Devis entreprises & écoles</a><a href="#/reparation">Réparation et dépannage</a><a href="#/reprise">Reprise de votre PC</a><a href="#/guide">Guide d'achat</a><a href="#/comparer">Comparateur</a></div>
       <div><h4>Aide</h4><a href="#/compte">Mon compte</a><a href="#/livraison">Livraison & retours</a><a href="#/faq">FAQ</a><a href="#/mes-commandes">Suivre ma commande</a><a href="#/contact">Contact</a><a href="#/cgv">CGV</a><a href="#/a-propos">À propos</a></div>
       <div><h4>Besoin d'aide ?</h4><p>Notre équipe vous répond sur WhatsApp.</p><a class="btn btn-wa" style="display:inline-flex;color:#fff" target="_blank" rel="noopener" href="${waLink(`Bonjour ${S.name} !`)}">${ic("chat", 18)}Écrire sur WhatsApp</a><p class="f-line" style="margin-top:12px">${ic("clock", 16)}${esc(S.hours)}</p>
         <div class="f-app" data-install hidden><img src="icons/icon-192.png" alt=""><div><strong>Application Venips</strong><span>Une icône sur votre téléphone ou votre bureau</span></div><span class="f-app-btn">${ic("download", 16)}Installer</span></div>

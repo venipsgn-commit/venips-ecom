@@ -2,7 +2,7 @@
    Rend le site installable comme une application et permet de l'ouvrir même avec une connexion faible.
    Stratégie « réseau d'abord » : la version en ligne est toujours prioritaire, la copie locale
    ne sert que si le réseau ne répond pas. Les appels à la base de données ne sont jamais mis en cache. */
-const CACHE = "venips-v11";
+const CACHE = "venips-v12";
 const CORE = ["/", "/index.html", "/css/style.css", "/js/config.js", "/js/products.js", "/js/app.js", "/js/assistant.js", "/js/facture.js", "/images/logo.jpg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -14,6 +14,23 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// Notifications (suivi de commande, nouveautés)
+self.addEventListener("push", (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch { d = { body: event.data ? event.data.text() : "" }; }
+  event.waitUntil(self.registration.showNotification(d.title || "Venips", {
+    body: d.body || "", icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", tag: d.tag || "venips", data: { url: d.url || "/" }
+  }));
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    for (const c of list) { if ("focus" in c) { c.navigate(url); return c.focus(); } }
+    return self.clients.openWindow(url);
+  }));
 });
 
 self.addEventListener("fetch", (event) => {

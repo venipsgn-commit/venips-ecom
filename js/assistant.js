@@ -224,6 +224,24 @@
     if (has(t, "epuise", "rupture", "plus en stock", "pas disponible", "revient", "retour en stock", "prevenir", "quand sera")) {
       return `<p>Quand un produit est épuisé, ouvrez sa fiche et cliquez sur <b>« Me prévenir du retour en stock »</b> : nous vous contactons dès son retour.</p>${waBtn(raw, "Demander sur WhatsApp")}`;
     }
+    if (has(t, "aide moi a choisir", "aidez moi a choisir", "je ne sais pas quoi", "lequel me conseill", "quel modele", "trouver mon", "je cherche un ordinateur pour")) {
+      return `<p>Répondez à 3 questions (usage, budget, priorité) et nous vous proposons les 3 meilleurs ordinateurs en stock :</p><p><a class="as-link" href="#/trouver">Trouver mon PC</a></p>`;
+    }
+    if (has(t, "carte cadeau", "cartes cadeaux", "bon d achat", "offrir", "cadeau")) {
+      return `<p>Offrez une <b>carte cadeau ${esc(S.name)}</b> (de 50 000 à 10 000 000 GNF), valable 1 an sur tout le site. Paiement par Orange Money ou MTN.</p><p><a class="as-link" href="#/cadeau">Offrir une carte cadeau</a></p>`;
+    }
+    if (has(t, "prix entreprise", "prix pro", "revendeur", "grossiste", "compte pro", "compte entreprise")) {
+      return `<p>Entreprises, écoles, ONG et revendeurs : demandez un <b>compte entreprise</b> dans « Mon compte » pour voir nos prix spéciaux. Pour une grosse quantité, faites aussi une demande de devis.</p><p><a class="as-link" href="#/compte">Mon compte</a> <a class="as-link" href="#/devis">Devis</a></p>`;
+    }
+    if (has(t, "reserver", "reservation", "acompte", "mettre de cote")) {
+      return `<p>Vous pouvez <b>réserver un ordinateur avec un acompte de 20 %</b> (Orange Money ou MTN) : choisissez « Réserver avec un acompte » au moment de commander. Le reste se paie à la livraison.</p>`;
+    }
+    if (has(t, "notification", "me prevenir", "alerte sur mon telephone")) {
+      return `<p>Après votre commande, cliquez sur <b>« Me notifier de l'avancement »</b> : vous recevez une notification à chaque étape. Pour nos promos, activez « Recevoir les nouveautés » dans Mon compte.</p>`;
+    }
+    if (has(t, "conseil", "astuce", "article", "blog", "entretenir", "batterie qui")) {
+      return `<p>Retrouvez nos <b>conseils</b> : bien choisir son ordinateur, faire durer sa batterie, reconditionné ou neuf…</p><p><a class="as-link" href="#/conseils">Lire nos conseils</a></p>`;
+    }
     if (has(t, "pack", "lot ", "ensemble", "combo", "avec souris", "avec sac")) {
       return `<p>Nos <b>packs</b> regroupent un ordinateur et ses accessoires (souris, sac…) à prix réduit. La réduction s'applique toute seule dans le panier.</p><p><a class="as-link" href="#/packs">Voir les packs</a></p>`;
     }

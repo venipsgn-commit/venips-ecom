@@ -131,8 +131,74 @@ fallback = base.replace("<head>", '<head>\n  <base href="/">\n  <meta name="robo
     "<body", '<script>(function(){var m=location.pathname.match(/^\\/p\\/([a-z0-9-]+)/);if(m&&(!location.hash||location.hash==="#/"))history.replaceState(null,"",location.pathname+"#/produit/"+m[1]);})();</script>\n<body', 1)
 open(os.path.join(ROOT, "produit.html"), "w", encoding="utf-8").write(fallback)
 
+# ---------- Pages par marque, par catégorie et articles de conseils ----------
+def landing(folder, slug_, title, desc, hash_, static, ld=None):
+    url = f"{SITE}/{folder}/{slug_}"
+    page = base.replace("<head>", '<head>\n  <base href="/">', 1)
+    page = re.sub(r"<title>.*?</title>", f"<title>{esc(title)}</title>", page, count=1)
+    page = replace_meta(page, "name", "description", desc[:300])
+    page = re.sub(r'<link rel="canonical" href="[^"]*">', f'<link rel="canonical" href="{url}">', page, count=1)
+    page = replace_meta(page, "property", "og:title", title)
+    page = replace_meta(page, "property", "og:description", desc[:300])
+    page = replace_meta(page, "property", "og:url", url)
+    if ld:
+        page = page.replace("</head>", '  <script type="application/ld+json">' + json.dumps(ld, ensure_ascii=False).replace("</", "<\\/") + "</script>\n</head>", 1)
+    page = page.replace("<body", f'<script>if(!location.hash||location.hash==="#/")history.replaceState(null,"",location.pathname+"{hash_}");</script>\n<body', 1)
+    page = page.replace('<main id="app" tabindex="-1"></main>', f'<main id="app" tabindex="-1"><div class="container" style="padding:24px 16px">{static}</div></main>', 1)
+    d = os.path.join(ROOT, folder)
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, f"{slug_}.html"), "w", encoding="utf-8").write(page)
+    return url
+
+def slugify(t):
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(t).lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:60]
+
+def product_list(items):
+    return "<ul>" + "".join(f'<li><a href="/p/{esc(p["id"])}">{esc(nice(p["name"]))}</a> — {money(p["price"])}</li>' for p in items) + "</ul>"
+
+extra_urls = []
+for folder in ("m", "c", "conseils"):
+    shutil.rmtree(os.path.join(ROOT, folder), ignore_errors=True)
+brands = {}
+for p in products:
+    if p.get("brand"):
+        brands.setdefault(p["brand"].strip(), []).append(p)
+for brand, items in brands.items():
+    if len(items) < 1 or not slugify(brand):
+        continue
+    lo = min(int(float(i["price"])) for i in items)
+    title = f"Ordinateurs et accessoires {brand} à Conakry – dès {money(lo)} | Venips"
+    desc = f"{len(items)} produit{'s' if len(items) > 1 else ''} {brand} en stock chez Venips à Conakry, à partir de {money(lo)}. Livraison rapide, paiement à la livraison, Orange Money ou MTN MoMo."
+    static = f"<h1>{esc(brand)} à Conakry</h1><p>{esc(desc)}</p>" + product_list(items)
+    extra_urls.append(landing("m", slugify(brand), title, desc, f"#/boutique?brand={brand}", static,
+        {"@context": "https://schema.org", "@type": "ItemList", "name": f"{brand} chez Venips", "itemListElement": [{"@type": "ListItem", "position": i + 1, "url": f"{SITE}/p/{x['id']}"} for i, x in enumerate(items[:30])]}))
+for cid, cname in categories.items():
+    items = [p for p in products if p.get("category_id") == cid]
+    if not items or not re.fullmatch(r"[a-z0-9-]+", cid):
+        continue
+    lo = min(int(float(i["price"])) for i in items)
+    title = f"{cname} à Conakry – {len(items)} modèles dès {money(lo)} | Venips"
+    desc = f"{cname} : {len(items)} produits en stock chez Venips à Conakry (HP, Dell, Lenovo…), à partir de {money(lo)}. Livraison rapide et paiement à la livraison."
+    static = f"<h1>{esc(cname)} à Conakry</h1><p>{esc(desc)}</p>" + product_list(items)
+    extra_urls.append(landing("c", cid, title, desc, f"#/boutique?cat={cid}", static))
+try:
+    posts = get("posts?select=slug,title,excerpt,body,created_at,updated_at&published=eq.true&order=created_at.desc")
+except Exception:
+    posts = []
+for po in posts:
+    if not re.fullmatch(r"[a-z0-9-]+", po["slug"]):
+        continue
+    body = "".join(f"<p>{esc(par.strip())}</p>" for par in re.split(r"\n\s*\n", po["body"] or "") if par.strip())
+    ld = {"@context": "https://schema.org", "@type": "Article", "headline": po["title"], "description": po.get("excerpt") or "",
+          "datePublished": po["created_at"], "dateModified": po.get("updated_at") or po["created_at"], "author": {"@type": "Organization", "name": "Venips"}}
+    extra_urls.append(landing("conseils", po["slug"], f"{po['title']} | Venips", po.get("excerpt") or po["title"], f"#/conseils/{po['slug']}", f"<h1>{esc(po['title'])}</h1>{body}", ld))
+
 # Plan du site
 urls = [f"  <url><loc>{SITE}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>"]
+urls += [f"  <url><loc>{u}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>" for u in extra_urls]
 urls += [f"  <url><loc>{SITE}/p/{p['id']}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>"
          for p in products if re.fullmatch(r"[a-z0-9-]+", p["id"])]
 open(os.path.join(ROOT, "sitemap.xml"), "w", encoding="utf-8").write(
@@ -147,4 +213,4 @@ with open(os.path.join(ROOT, "catalogue.csv"), "w", encoding="utf-8", newline=""
     for row in feed:
         w.writerow(row)
 
-print(f"{len(products)} pages produits, {len(feed)} produits dans le catalogue (ceux qui ont une photo)")
+print(f"{len(products)} pages produits, {len(extra_urls)} pages marques/catégories/conseils, {len(feed)} produits dans le catalogue (ceux qui ont une photo)")

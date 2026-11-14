@@ -52,8 +52,11 @@ window.STORE = {
     { id: "livraison", name: "Paiement à la livraison", desc: "Payez en espèces à la réception de votre colis." },
     { id: "orange", name: "Orange Money", desc: "Envoyez le montant au numéro Orange Money ci-dessous, puis partagez la capture sur WhatsApp." },
     { id: "mtn", name: "MTN Mobile Money", desc: "Envoyez le montant au numéro MoMo ci-dessous, puis partagez la capture sur WhatsApp." },
+    { id: "acompte", name: "Réserver avec un acompte (20 %)", desc: "Versez 20 % par Orange Money ou MTN pour réserver l'ordinateur ; le reste se paie à la livraison." },
     { id: "tranches", name: "Paiement en plusieurs fois", desc: "Sur accord de notre équipe : payez en 2 ou 3 fois. Nous vous appelons pour valider avant la livraison." }
   ],
+  // Clé publique des notifications (la clé privée reste dans la base)
+  vapidPublicKey: "BBQX-mnIiKJaIoufza_m1RmulWX4j6a8Y7hpvDGfQbvp88xpCzTj1gRMYmbu5ZQkrhrmUCbZRctVUPVLjIbo-qg",
   orangeMoneyNumber: "+224 628 88 03 54",
   mtnMoneyNumber: "+224 628 88 03 54",
 

@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://www.venips.fr/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://www.venips.fr/m/dell</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/m/hp</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/m/lenovo</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/m/acer</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/c/ordinateurs</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/c/accessoires</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/conseils/choisir-ordinateur-etudiant</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/conseils/entretenir-batterie-ordinateur</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.venips.fr/conseils/reconditionne-ou-neuf</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.venips.fr/p/dell-3300-i5-8th-8730</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://www.venips.fr/p/hp-840-g3-2938</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://www.venips.fr/p/lenovo-11e-3066</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>

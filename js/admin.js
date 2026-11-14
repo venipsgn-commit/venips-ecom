@@ -212,7 +212,8 @@
   const NAV = [
     ["dashboard", "📊", "Tableau de bord"], ["stats", "📈", "Statistiques"], ["commandes", "🧾", "Commandes"], ["produits", "📦", "Produits"], ["clients", "👥", "Clients"],
     ["demandes", "📨", "Demandes"], ["paniers", "🛒", "Paniers abandonnés"], ["garanties", "🛡️", "Garanties"], ["avis", "⭐", "Avis clients"],
-    ["packs", "🎁", "Packs"], ["temoignages", "💬", "Témoignages"],
+    ["livreurs", "🛵", "Livreurs et caisse"], ["cadeaux", "💳", "Cartes cadeaux"],
+    ["packs", "🎁", "Packs"], ["temoignages", "💬", "Témoignages"], ["conseils", "📝", "Conseils"], ["notifications", "🔔", "Notifications"],
     ["categories", "🗂️", "Catégories"], ["livraison", "🚚", "Livraison"], ["promos", "🏷️", "Codes promo"]
   ];
   function renderShell() {
@@ -231,6 +232,7 @@
         <main class="main" id="main"><div class="loading-block"><div class="spinner dark" aria-hidden="true"></div><span>Chargement…</span></div></main>
       </div>`;
     $("#logout").addEventListener("click", async () => { await sb.auth.signOut(); });
+    sb.from("shop_settings").select("key,value").eq("key", "google_review_url").maybeSingle().then(({ data }) => { S.googleReviewUrl = data ? String(data.value || "") : ""; });
     $("#alerts-btn").addEventListener("click", enableAlerts);
     drawAlertsBtn();
     startOrderWatch();
@@ -348,6 +350,10 @@
       else if (tab === "paniers") await tabCarts(main);
       else if (tab === "packs") await tabPacks(main);
       else if (tab === "temoignages") await tabTestimonials(main);
+      else if (tab === "livreurs") await tabCouriers(main);
+      else if (tab === "cadeaux") await tabGiftCards(main);
+      else if (tab === "conseils") await tabPosts(main);
+      else if (tab === "notifications") await tabPush(main);
       else if (tab === "demandes") await tabRequests(main);
       else if (tab === "stats") await tabStats(main);
       else if (tab === "avis") await tabReviews(main);
@@ -363,11 +369,17 @@
     if (error) throw error;
     return (cache.orders = data);
   }
+  async function loadCouriers() {
+    const { data } = await sb.from("couriers").select("*").order("name");
+    return (cache.couriers = data || []);
+  }
   async function loadProducts() {
-    const [p, c] = await Promise.all([
+    const [p, c, pp] = await Promise.all([
       sb.from("products").select("*").order("position").order("created_at"),
-      sb.from("categories").select("*").order("position")
+      sb.from("categories").select("*").order("position"),
+      sb.from("pro_prices").select("product_id,price")
     ]);
+    cache.pro = {}; ((pp && pp.data) || []).forEach((r) => { cache.pro[r.product_id] = Number(r.price); });
     if (p.error) throw p.error;
     if (c.error) throw c.error;
     cache.categories = c.data;
@@ -509,7 +521,7 @@
   /* ---------- Commandes ---------- */
   let orderFilter = { status: "", q: "" };
   async function tabOrders(main) {
-    await loadOrders();
+    await Promise.all([loadOrders(), loadCouriers()]);
     main.innerHTML = `
       <div class="main-head"><h1>Commandes</h1><div class="actions"><button class="btn btn-outline btn-sm" id="export-csv">⬇︎ Export Excel</button><button class="btn btn-outline btn-sm" id="refresh">↻ Actualiser</button></div></div>
       <div class="toolbar-admin">
@@ -601,6 +613,12 @@
         <p>💳 ${esc(o.payment)}</p>
         <h4 style="margin-top:14px">Statut</h4>
         <select id="d-status" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;margin-bottom:10px">${Object.entries(STATUSES).map(([k, v]) => `<option value="${k}" ${o.status === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+        <div class="form-grid" style="margin-bottom:10px">
+          <div class="field"><label for="d-courier">🛵 Livreur</label><select id="d-courier"><option value="">— Aucun —</option>${(cache.couriers || []).filter((c) => c.active || c.user_id === o.courier_id).map((c) => `<option value="${c.user_id}" ${o.courier_id === c.user_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
+          <div class="field"><label for="d-deposit">💰 Acompte reçu (GNF)</label><input id="d-deposit" type="number" min="0" step="1000" value="${Number(o.deposit_paid) || ""}" placeholder="0"></div>
+        </div>
+        ${o.collected_at ? `<p class="notice" style="margin:0 0 10px">💵 Encaissé par le livreur : <b>${money(o.collected_amount)}</b> (${esc(o.collected_method || "")}) le ${fmtDate(o.collected_at)}${o.remitted_at ? ` · remis à la boutique ✓` : " · pas encore remis"}</p>` : ""}
+        ${Number(o.gift_amount) ? `<p class="hint" style="margin:0 0 10px">🎁 Carte cadeau ${esc(o.gift_code)} : -${money(o.gift_amount)}</p>` : ""}
         <h4>Note interne</h4>
         <textarea id="d-note" placeholder="Visible uniquement par l'équipe">${esc(o.admin_note || "")}</textarea>
         <div class="row-actions" style="justify-content:flex-start;margin-top:10px;flex-wrap:wrap">
@@ -628,7 +646,8 @@
     drawOrderWarranties(o, $("#d-warranties", row));
     $("#d-save", row).addEventListener("click", async () => {
       const status = $("#d-status", row).value, admin_note = $("#d-note", row).value.trim() || null;
-      const { data, error } = await sb.from("orders").update({ status, admin_note }).eq("id", o.id).select().single();
+      const courier_id = $("#d-courier", row).value || null, deposit_paid = Math.max(0, parseInt($("#d-deposit", row).value, 10) || 0);
+      const { data, error } = await sb.from("orders").update({ status, admin_note, courier_id, deposit_paid }).eq("id", o.id).select().single();
       if (error) return fail(error);
       const { data: fresh } = await sb.from("orders").select("*").eq("id", o.id).single();
       Object.assign(o, fresh || data);
@@ -647,7 +666,7 @@
       case "nouvelle": return `Bonjour ${first}, c'est ${S.name} 👋\nNous avons bien reçu votre commande ${o.id} :\n${items}\nTotal : ${money(o.total)}.\nNous vous recontactons très vite pour confirmer la livraison.`;
       case "confirmee": return `Bonjour ${first}, votre commande ${o.id} est confirmée ✅\n${items}\nTotal : ${money(o.total)}.${pay}\nLivraison prévue : ${o.zone_name || "Conakry"}. Nous vous appelons avant de passer.`;
       case "en_livraison": return `Bonjour ${first}, votre commande ${o.id} est en route 🚚\nNotre livreur vous appelle au ${o.customer_phone} dès qu'il arrive à : ${o.address}.\nMontant à prévoir : ${money(o.total)}.`;
-      case "livree": return `Bonjour ${first}, merci pour votre achat chez ${S.name} 🙏\nVotre commande ${o.id} est livrée. Votre facture est disponible dans « Mon compte » sur ${location.host}.\nSatisfait ? Laissez-nous un avis sur le produit, cela nous aide beaucoup. Pour toute question ou garantie, écrivez-nous ici.`;
+      case "livree": return `Bonjour ${first}, merci pour votre achat chez ${S.name} 🙏\nVotre commande ${o.id} est livrée. Votre facture est disponible dans « Mon compte » sur ${location.host}.\nSatisfait ? ${S.googleReviewUrl ? `Un petit avis Google nous aide énormément 🙏 ${S.googleReviewUrl}` : "Laissez-nous un avis sur le produit, cela nous aide beaucoup."} Pour toute question ou garantie, écrivez-nous ici.`;
       case "annulee": return `Bonjour ${first}, votre commande ${o.id} a été annulée. Si c'est une erreur ou si vous souhaitez un autre produit, répondez à ce message : nous sommes là pour vous aider.`;
       default: return `Bonjour ${first}, c'est ${S.name}. À propos de votre commande ${o.id}…`;
     }
@@ -1106,6 +1125,225 @@
     draw();
   }
 
+  /* ---------- Livreurs et caisse ---------- */
+  async function tabCouriers(main) {
+    const since = new Date(); since.setDate(since.getDate() - 30);
+    const [cs, os] = await Promise.all([loadCouriers(), sb.from("orders").select("id,status,courier_id,customer_name,zone_name,total,deposit_paid,collected_amount,collected_method,collected_at,remitted_at,created_at")
+      .or(`status.in.(confirmee,en_livraison),collected_at.gte.${since.toISOString()}`).order("created_at", { ascending: false }).limit(1000)]);
+    if (os.error) throw os.error;
+    const orders = os.data;
+    const today = new Date().toDateString();
+    const delivered = orders.filter((o) => o.collected_at);
+    const todayCash = delivered.filter((o) => new Date(o.collected_at).toDateString() === today);
+    const byMethod = todayCash.reduce((m, o) => { m[o.collected_method || "?"] = (m[o.collected_method || "?"] || 0) + Number(o.collected_amount || 0); return m; }, {});
+    const unassigned = orders.filter((o) => !o.courier_id && o.status === "confirmee");
+    main.innerHTML = `<div class="main-head"><h1>Livreurs et caisse</h1></div>
+      <div class="box" style="margin-bottom:16px"><h3>💵 Caisse du jour</h3>
+        <div class="report-grid"><a><b>${money(todayCash.reduce((s, o) => s + Number(o.collected_amount || 0), 0))}</b><span>encaissé aujourd'hui (${todayCash.length} livraison${todayCash.length > 1 ? "s" : ""})</span></a>
+        ${Object.entries(byMethod).map(([k, v]) => `<a><b>${money(v)}</b><span>${esc(k)}</span></a>`).join("")}
+        <a><b>${money(delivered.filter((o) => !o.remitted_at).reduce((s, o) => s + Number(o.collected_amount || 0), 0))}</b><span>encore chez les livreurs</span></a></div></div>
+      ${unassigned.length ? `<div class="box" style="margin-bottom:16px"><h3>📦 Commandes confirmées sans livreur (${unassigned.length})</h3>${unassigned.map((o) => `<div class="sum-row" data-assign="${esc(o.id)}"><span><b>${esc(o.id)}</b> · ${esc(o.customer_name)} · ${esc(o.zone_name)} · ${money(o.total)}</span>
+        <select data-assign-sel><option value="">Choisir…</option>${cs.filter((c) => c.active).map((c) => `<option value="${c.user_id}">${esc(c.name)}</option>`).join("")}</select></div>`).join("")}</div>` : ""}
+      <div class="box" style="margin-bottom:16px"><h3>🛵 Vos livreurs</h3><div id="cr-list"></div>
+        <form id="cr-form" class="form-grid" style="margin-top:14px"><div class="field"><label>Email du compte du livreur *</label><input name="email" type="email" required placeholder="Le livreur crée d'abord son compte sur la boutique"></div>
+          <div class="field"><label>Nom *</label><input name="name" required></div><div class="field"><label>Téléphone</label><input name="phone" placeholder="+224 6…"></div>
+          <div class="field" style="align-self:end"><button class="btn btn-primary">+ Ajouter le livreur</button></div></form>
+        <p class="hint" style="margin-bottom:0">Le livreur ouvre ensuite la boutique, se connecte avec son compte, puis va dans « Mon compte › Espace livreur » (ou directement ${esc(location.host)}/#/livreur).</p></div>`;
+    $("#cr-list").innerHTML = cs.length ? `<table class="data"><tr><th>Livreur</th><th>À livrer</th><th>Livrées (30 j)</th><th>À remettre</th><th></th></tr>${cs.map((c) => {
+      const mine = orders.filter((o) => o.courier_id === c.user_id);
+      const owed = mine.filter((o) => o.collected_at && !o.remitted_at);
+      const owedSum = owed.reduce((s, o) => s + Number(o.collected_amount || 0), 0);
+      return `<tr data-cr="${c.user_id}"><td><b>${esc(c.name)}</b><br><small class="muted">${esc(c.phone || "")}${c.active ? "" : " · désactivé"}</small></td><td>${mine.filter((o) => o.status !== "livree").length}</td><td>${mine.filter((o) => o.collected_at).length}</td>
+        <td><b>${money(owedSum)}</b></td><td><div class="row-actions">${owedSum ? `<button class="btn btn-primary btn-sm" data-cr-cash>Argent reçu</button>` : ""}${c.phone ? `<a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${String(c.phone).replace(/\D/g, "")}">WhatsApp</a>` : ""}<button class="btn btn-outline btn-sm" data-cr-toggle>${c.active ? "Désactiver" : "Réactiver"}</button></div></td></tr>`; }).join("")}</table>`
+      : `<p class="hint" style="margin:0">Aucun livreur pour le moment.</p>`;
+    $$("[data-assign-sel]").forEach((s) => s.addEventListener("change", async () => {
+      if (!s.value) return;
+      const id = s.closest("[data-assign]").dataset.assign;
+      const { error } = await sb.from("orders").update({ courier_id: s.value }).eq("id", id);
+      if (error) return fail(error);
+      toast(`Commande ${id} confiée au livreur`); renderTab();
+    }));
+    $$("[data-cr-cash]").forEach((b) => b.addEventListener("click", async () => {
+      const uid = b.closest("[data-cr]").dataset.cr;
+      const ids = orders.filter((o) => o.courier_id === uid && o.collected_at && !o.remitted_at).map((o) => o.id);
+      if (!confirm(`Confirmer que vous avez reçu l'argent de ${ids.length} livraison(s) ?`)) return;
+      const { error } = await sb.from("orders").update({ remitted_at: new Date().toISOString() }).in("id", ids);
+      if (error) return fail(error);
+      toast("💵 Argent reçu enregistré"); renderTab();
+    }));
+    $$("[data-cr-toggle]").forEach((b) => b.addEventListener("click", async () => {
+      const uid = b.closest("[data-cr]").dataset.cr; const c = cs.find((x) => x.user_id === uid);
+      const { error } = await sb.from("couriers").update({ active: !c.active }).eq("user_id", uid);
+      if (error) return fail(error); renderTab();
+    }));
+    $("#cr-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(e.target));
+      const { error } = await sb.rpc("admin_add_courier", { p_email: d.email, p_name: d.name, p_phone: d.phone });
+      if (error) return fail(error, "Ajout impossible");
+      toast("🛵 Livreur ajouté"); renderTab();
+    });
+  }
+
+  /* ---------- Cartes cadeaux ---------- */
+  async function tabGiftCards(main) {
+    const { data, error } = await sb.from("gift_cards").select("*").order("created_at", { ascending: false }).limit(500);
+    if (error) throw error;
+    const LABEL = { en_attente: "En attente de paiement", active: "Active", annulee: "Annulée" };
+    main.innerHTML = `<div class="main-head"><h1>Cartes cadeaux</h1><div class="actions"><button class="btn btn-primary btn-sm" id="g-new">+ Créer une carte</button></div></div>
+      <p class="hint" style="margin-top:0">Les clients commandent une carte sur la page « Cartes cadeaux », puis paient par Orange Money / MTN. Activez la carte dès réception du paiement : elle devient utilisable à la commande (code VC-…).</p>
+      <div id="g-form"></div><div id="g-list"></div>`;
+    const draw = () => {
+      $("#g-list").innerHTML = data.length ? data.map((g) => `<div class="box req" data-g="${esc(g.code)}"><div class="req-head"><b>${esc(g.code)}</b><span>${money(g.amount)}</span><span class="muted">${fmtDate(g.created_at)}</span><span class="status ${g.status === "active" ? "livree" : g.status === "annulee" ? "annulee" : "nouvelle"}">${LABEL[g.status]}</span></div>
+        <p style="margin:6px 0">Acheteur : <b>${esc(g.buyer_name)}</b> ${esc(g.buyer_phone)}${g.recipient_name ? ` · Pour : <b>${esc(g.recipient_name)}</b> ${esc(g.recipient_phone || "")}` : ""}</p>
+        ${g.message ? `<p class="req-msg">${esc(g.message)}</p>` : ""}
+        <p style="margin:6px 0">Solde : <b>${money(g.balance)}</b> · valable jusqu'au ${new Date(g.expires_at).toLocaleDateString("fr-FR")}</p>
+        <div class="req-actions">${g.status === "en_attente" ? `<button class="btn btn-primary btn-sm" data-g-on>✓ Paiement reçu : activer</button>` : ""}
+          ${g.status === "active" ? `<a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/${String(g.recipient_phone || g.buyer_phone).replace(/\D/g, "")}?text=${encodeURIComponent(`🎁 ${g.recipient_name ? `Bonjour ${g.recipient_name}, ` : ""}${g.buyer_name} vous offre une carte cadeau ${S.name} de ${money(g.amount)} !${g.message ? `\n« ${g.message} »` : ""}\nCode : ${g.code}\nÀ utiliser sur ${location.host} au moment de commander (valable jusqu'au ${new Date(g.expires_at).toLocaleDateString("fr-FR")}).`)}">Envoyer la carte sur WhatsApp</a>` : ""}
+          ${g.status !== "annulee" ? `<button class="btn btn-outline btn-sm" data-g-off>Annuler</button>` : ""}</div></div>`).join("")
+        : `<div class="box"><p class="hint" style="margin:0">Aucune carte cadeau pour le moment.</p></div>`;
+      $$("[data-g-on]").forEach((b) => b.addEventListener("click", () => setStatus(b, "active")));
+      $$("[data-g-off]").forEach((b) => b.addEventListener("click", () => { if (confirm("Annuler cette carte ?")) setStatus(b, "annulee"); }));
+    };
+    const setStatus = async (b, status) => {
+      const code = b.closest("[data-g]").dataset.g;
+      const { data: row, error: e } = await sb.from("gift_cards").update({ status, activated_at: status === "active" ? new Date().toISOString() : null }).eq("code", code).select().single();
+      if (e) return fail(e);
+      Object.assign(data.find((g) => g.code === code), row); draw(); toast(status === "active" ? "🎁 Carte activée" : "Carte annulée");
+    };
+    $("#g-new").addEventListener("click", () => {
+      $("#g-form").innerHTML = `<form class="box" id="gf" style="margin-bottom:14px"><h3>Nouvelle carte (déjà payée)</h3><div class="form-grid">
+        <div class="field"><label>Montant (GNF) *</label><input name="amount" type="number" min="50000" step="10000" value="250000" required></div>
+        <div class="field"><label>Acheteur *</label><input name="buyer_name" required></div><div class="field"><label>Téléphone acheteur *</label><input name="buyer_phone" placeholder="+224 6…" required></div>
+        <div class="field"><label>Bénéficiaire</label><input name="recipient_name"></div></div>
+        <div class="row-actions" style="justify-content:flex-start;margin-top:10px"><button class="btn btn-primary btn-sm">Créer et activer</button></div></form>`;
+      $("#gf").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const d = Object.fromEntries(new FormData(e.target));
+        const rnd = () => Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, "X");
+        const amount = parseInt(d.amount, 10);
+        const { data: row, error: er } = await sb.from("gift_cards").insert({ code: `VC-${rnd()}-${rnd()}`, amount, balance: amount, buyer_name: d.buyer_name.trim(), buyer_phone: d.buyer_phone.trim(), recipient_name: d.recipient_name.trim() || null, status: "active", activated_at: new Date().toISOString() }).select().single();
+        if (er) return fail(er);
+        data.unshift(row); $("#g-form").innerHTML = ""; draw(); toast("🎁 Carte créée");
+      });
+    });
+    draw();
+  }
+
+  /* ---------- Conseils (blog) ---------- */
+  async function tabPosts(main) {
+    const { data, error } = await sb.from("posts").select("*").order("created_at", { ascending: false });
+    if (error) throw error;
+    main.innerHTML = `<div class="main-head"><h1>Conseils</h1><div class="actions"><button class="btn btn-primary btn-sm" id="po-new">+ Nouvel article</button></div></div>
+      <p class="hint" style="margin-top:0">Des articles utiles (choisir un PC, entretenir sa batterie…) attirent des visiteurs depuis Google. Mise en forme : une ligne vide entre les paragraphes, « ## » pour un titre, « - » pour une liste, **gras**.</p>
+      <div id="po-form"></div><div id="po-list"></div>`;
+    const draw = () => {
+      $("#po-list").innerHTML = data.length ? data.map((p) => `<div class="box req"><div class="req-head"><b>${esc(p.title)}</b><span class="muted">${fmtDate(p.created_at)}</span><span class="status ${p.published ? "livree" : "annulee"}">${p.published ? "Publié" : "Brouillon"}</span></div>
+        ${p.excerpt ? `<p style="margin:6px 0">${esc(p.excerpt)}</p>` : ""}<div class="req-actions"><a class="btn btn-outline btn-sm" href="./#/conseils/${esc(p.slug)}" target="_blank" rel="noopener">Voir</a><button class="btn btn-outline btn-sm" data-po-edit="${esc(p.slug)}">Modifier</button><button class="btn btn-danger btn-sm" data-po-del="${esc(p.slug)}">Supprimer</button></div></div>`).join("")
+        : `<div class="box"><p class="hint" style="margin:0">Aucun article.</p></div>`;
+      $$("[data-po-edit]").forEach((b) => b.addEventListener("click", () => form(data.find((p) => p.slug === b.dataset.poEdit))));
+      $$("[data-po-del]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Supprimer cet article ?")) return;
+        const { error: e } = await sb.from("posts").delete().eq("slug", b.dataset.poDel);
+        if (e) return fail(e);
+        data.splice(data.findIndex((p) => p.slug === b.dataset.poDel), 1); draw(); toast("Article supprimé");
+      }));
+    };
+    const form = (p) => {
+      const isNew = !p; p = p || { slug: "", title: "", excerpt: "", body: "", image_url: "", published: true };
+      $("#po-form").innerHTML = `<form class="box" id="pof" style="margin-bottom:14px"><h3>${isNew ? "Nouvel article" : "Modifier l'article"}</h3>
+        <div class="field"><label>Titre *</label><input name="title" value="${esc(p.title)}" maxlength="140" required></div>
+        <div class="field" style="margin-top:10px"><label>Résumé (affiché dans la liste et sur Google)</label><input name="excerpt" value="${esc(p.excerpt || "")}" maxlength="300"></div>
+        <div class="field" style="margin-top:10px"><label>Image (lien, facultatif)</label><input name="image_url" value="${esc(p.image_url || "")}" placeholder="https://…"></div>
+        <div class="field" style="margin-top:10px"><label>Texte *</label><textarea name="body" rows="14" required>${esc(p.body)}</textarea></div>
+        <label class="check" style="margin-top:10px"><input type="checkbox" name="published" ${p.published ? "checked" : ""}> Publié</label>
+        <div class="row-actions" style="justify-content:flex-start;margin-top:10px"><button class="btn btn-primary btn-sm">${isNew ? "Publier" : "Enregistrer"}</button><button type="button" class="btn btn-outline btn-sm" id="pof-cancel">Annuler</button></div></form>`;
+      const f = $("#pof");
+      $("#pof-cancel").addEventListener("click", () => { $("#po-form").innerHTML = ""; });
+      f.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const row = { title: f.title.value.trim(), excerpt: f.excerpt.value.trim() || null, image_url: normalizeImageUrl(f.image_url.value.trim()) || null, body: f.body.value.trim(), published: f.published.checked, updated_at: new Date().toISOString() };
+        const res = isNew ? await sb.from("posts").insert({ ...row, slug: (slug(row.title).slice(0, 70) || "article") + "-" + Date.now().toString(36).slice(-3) }).select().single()
+          : await sb.from("posts").update(row).eq("slug", p.slug).select().single();
+        if (res.error) return fail(res.error);
+        if (isNew) data.unshift(res.data); else Object.assign(p, res.data);
+        $("#po-form").innerHTML = ""; draw(); toast(isNew ? "📝 Article publié" : "Article enregistré");
+      });
+      $("#po-form").scrollIntoView({ behavior: "smooth" });
+    };
+    $("#po-new").addEventListener("click", () => form(null));
+    draw();
+  }
+
+  /* ---------- Notifications ---------- */
+  async function tabPush(main) {
+    const { data, error } = await sb.from("push_subs").select("topics,order_id,created_at");
+    if (error) throw error;
+    const news = data.filter((s) => (s.topics || []).includes("news")).length;
+    const orders = data.filter((s) => s.order_id).length;
+    main.innerHTML = `<div class="main-head"><h1>Notifications</h1></div>
+      <div class="stats" style="grid-template-columns:repeat(2,1fr)"><div class="stat"><small>Abonnés aux nouveautés</small><strong>${news}</strong></div><div class="stat"><small>Suivis de commande activés</small><strong>${orders}</strong></div></div>
+      <p class="hint" style="margin-top:0">Les clients qui suivent une commande reçoivent automatiquement une notification à chaque étape (confirmée, en route, livrée). Ici, envoyez une annonce à tous les abonnés aux nouveautés.</p>
+      <form class="box" id="push-form"><h3>📣 Nouvelle annonce</h3>
+        <div class="field"><label>Titre *</label><input name="title" maxlength="80" required placeholder="⚡ Vente flash ce week-end !"></div>
+        <div class="field" style="margin-top:10px"><label>Message *</label><input name="body" maxlength="200" required placeholder="Jusqu'à -15 % sur les HP EliteBook. Quantités limitées."></div>
+        <div class="field" style="margin-top:10px"><label>Page ouverte au clic</label><select name="url"><option value="/">Accueil</option><option value="/#/packs">Packs</option><option value="/#/boutique?promo=1">Promotions</option><option value="/#/conseils">Conseils</option><option value="/#/cadeau">Cartes cadeaux</option></select></div>
+        <div class="row-actions" style="justify-content:flex-start;margin-top:12px"><button class="btn btn-primary btn-sm" data-type="news">Envoyer à ${news} abonné${news > 1 ? "s" : ""}</button><button class="btn btn-outline btn-sm" data-type="test">Tester sur mes appareils</button></div>
+        <p class="hint" style="margin-bottom:0">Pour tester : sur votre téléphone, ouvrez la boutique connecté avec ce compte, puis « Mon compte › Recevoir les nouveautés ».</p></form>`;
+    $$("#push-form button").forEach((b) => b.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const f = $("#push-form");
+      if (!f.reportValidity()) return;
+      if (b.dataset.type === "news" && !confirm(`Envoyer cette annonce à ${news} abonné(s) ?`)) return;
+      b.disabled = true;
+      const { data: r, error: er } = await sb.functions.invoke("push", { body: { type: b.dataset.type, title: f.title.value, body: f.body.value, url: f.url.value } });
+      b.disabled = false;
+      if (er) return fail(er, "Envoi impossible");
+      toast(`🔔 Envoyée à ${r.sent} appareil${r.sent > 1 ? "s" : ""}${r.total > r.sent ? ` (${r.total - r.sent} indisponible${r.total - r.sent > 1 ? "s" : ""})` : ""}`);
+    }));
+  }
+
+  /* ---------- Liste des prix à partager (image pour WhatsApp) ---------- */
+  async function priceList() {
+    const cats = cache.categories;
+    const list = cache.products.filter((p) => p.active && p.stock > 0).sort((a, b) => cats.findIndex((c) => c.id === a.category_id) - cats.findIndex((c) => c.id === b.category_id) || a.price - b.price);
+    if (!list.length) return toast("Aucun produit en stock", true);
+    const W = 1080, rowH = 64, head = 250, groupH = 70;
+    const groups = cats.map((c) => ({ c, items: list.filter((p) => p.category_id === c.id) })).filter((g) => g.items.length);
+    const H = head + groups.reduce((s, g) => s + groupH + g.items.length * rowH, 0) + 190;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const x = cv.getContext("2d");
+    x.fillStyle = "#f5f7fb"; x.fillRect(0, 0, W, H);
+    const g0 = x.createLinearGradient(0, 0, W, head); g0.addColorStop(0, "#0f014c"); g0.addColorStop(1, "#2a1590");
+    x.fillStyle = g0; x.fillRect(0, 0, W, head);
+    const logo = await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = S.logoImage || "images/logo.jpg"; });
+    if (logo) { const lh = 90, lw = logo.width * (lh / logo.height); x.drawImage(logo, 60, 50, lw, lh); }
+    x.fillStyle = "#fff"; x.font = "bold 44px Inter, Arial"; x.fillText("Nos prix du moment", 60, 200);
+    x.fillStyle = "#00e5dc"; x.font = "600 26px Inter, Arial"; x.textAlign = "right"; x.fillText(new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }), W - 60, 200); x.textAlign = "left";
+    let y = head + 20;
+    const fit = (t, max) => { let s = t; while (x.measureText(s).width > max && s.length > 4) s = s.slice(0, -2); return s === t ? s : s.trim() + "…"; };
+    groups.forEach((g) => {
+      x.fillStyle = "#0b9b93"; x.font = "bold 30px Inter, Arial"; x.fillText(g.c.name.toUpperCase(), 60, y + 42); y += groupH;
+      g.items.forEach((p, i) => {
+        x.fillStyle = i % 2 ? "#ffffff" : "#eef1f6"; x.fillRect(40, y, W - 80, rowH - 6);
+        x.fillStyle = "#0f172a"; x.font = "600 27px Inter, Arial"; x.fillText(fit(p.name, 640), 60, y + 40);
+        x.textAlign = "right"; x.fillStyle = "#0f014c"; x.font = "bold 28px Inter, Arial"; x.fillText(money(p.price), W - 60, y + 40); x.textAlign = "left";
+        y += rowH;
+      });
+    });
+    x.fillStyle = "#0f014c"; x.fillRect(0, H - 150, W, 150);
+    x.fillStyle = "#fff"; x.font = "bold 32px Inter, Arial"; x.fillText(`Commandez sur ${location.host}`, 60, H - 90);
+    x.fillStyle = "#c7d2fe"; x.font = "26px Inter, Arial"; x.fillText(`WhatsApp ${S.phoneDisplay || ""} · Livraison à Conakry · Paiement à la livraison`, 60, H - 45);
+    const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
+    const file = new File([blob], `prix-venips-${new Date().toISOString().slice(0, 10)}.png`, { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "Nos prix du moment" }); return; } catch { /* annulé : on télécharge */ }
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast(`📤 Image téléchargée (${list.length} produits) : partagez-la sur votre statut WhatsApp`);
+  }
+
   /* ---------- Produits ---------- */
   let productQ = "";
   let waiting = {};   // produit -> nombre de clients qui attendent le retour en stock
@@ -1114,7 +1352,7 @@
     waiting = {};
     ((al && al.data) || []).forEach((r) => { waiting[r.product_id] = (waiting[r.product_id] || 0) + 1; });
     main.innerHTML = `
-      <div class="main-head"><h1>Produits</h1><div class="actions"><button class="btn btn-outline btn-sm" id="p-flash">⚡ Vente flash</button><button class="btn btn-primary btn-sm" id="p-new">+ Nouveau produit</button></div></div>
+      <div class="main-head"><h1>Produits</h1><div class="actions"><button class="btn btn-outline btn-sm" id="p-pricelist">📤 Liste des prix</button><button class="btn btn-outline btn-sm" id="p-flash">⚡ Vente flash</button><button class="btn btn-primary btn-sm" id="p-new">+ Nouveau produit</button></div></div>
       <div id="flash-info"></div>
       <div class="toolbar-admin">
         <input type="search" id="p-q" placeholder="Rechercher un produit, une marque…" value="${esc(productQ)}">
@@ -1123,6 +1361,7 @@
       <div class="table-wrap" id="products-table"></div>`;
     $("#p-new").addEventListener("click", () => productForm(null));
     $("#p-flash").addEventListener("click", flashForm);
+    $("#p-pricelist").addEventListener("click", priceList);
     drawFlashInfo();
     $("#p-q").addEventListener("input", (e) => { productQ = e.target.value; drawProducts(); });
     $("#p-cat").addEventListener("change", drawProducts);
@@ -1244,6 +1483,7 @@
           <div class="field"><label for="pf-brand">Marque</label><input id="pf-brand" name="brand" value="${esc(p.brand)}"></div>
           <div class="field"><label for="pf-cat">Catégorie *</label><select id="pf-cat" name="category_id">${cache.categories.map((c) => `<option value="${esc(c.id)}" ${c.id === p.category_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
           <div class="field"><label for="pf-price">Prix (GNF) *</label><input id="pf-price" name="price" type="number" min="0" step="1000" value="${esc(p.price)}" required></div>
+          <div class="field"><label for="pf-pro">Prix entreprise (GNF) <small class="hint">comptes pro validés</small></label><input id="pf-pro" name="pro_price" type="number" min="0" step="1000" value="${esc((cache.pro || {})[p.id] || "")}"></div>
           <div class="field"><label for="pf-old">Ancien prix (GNF) <small class="hint">pour afficher une promo</small></label><input id="pf-old" name="old_price" type="number" min="0" step="1000" value="${esc(p.old_price || "")}"></div>
           <div class="field"><label for="pf-stock">Stock *</label><input id="pf-stock" name="stock" type="number" min="0" value="${esc(p.stock)}" required></div>
           <div class="field"><label for="pf-badge">Badge <small class="hint">ex. Promo, Nouveau</small></label><input id="pf-badge" name="badge" value="${esc(p.badge || "")}" maxlength="20"></div>
@@ -1317,6 +1557,9 @@
           : await sb.from("products").update(row).eq("id", p.id).select().single();
         if (error) throw error;
         if (isNew) cache.products.push(data); else Object.assign(p, data);
+        const pro = parseInt(f.pro_price.value, 10);
+        if (pro > 0 && pro < data.price) { await sb.from("pro_prices").upsert({ product_id: data.id, price: pro }); (cache.pro = cache.pro || {})[data.id] = pro; }
+        else if ((cache.pro || {})[data.id]) { await sb.from("pro_prices").delete().eq("product_id", data.id); delete cache.pro[data.id]; }
         toast(isNew ? "Produit ajouté ✓" : "Produit enregistré ✓");
         close();
         drawProducts();
@@ -1345,6 +1588,7 @@
       if (!s.last || o.created_at > s.last) s.last = o.created_at;
     });
     const customers = profiles.data.filter((p) => !adminIds.has(p.user_id));
+    const proReq = customers.filter((p) => p.pro_status === "demande");
     const guests = orders.filter((o) => !o.user_id).length;
     main.innerHTML = `
       <div class="main-head"><h1>Clients</h1></div>
@@ -1353,9 +1597,16 @@
         <div class="stat"><small>Commandes avec compte</small><strong>${orders.length - guests}</strong></div>
         <div class="stat"><small>Commandes sans compte</small><strong>${guests}</strong></div>
       </div>
+      ${proReq.length ? `<div class="box" style="margin-bottom:14px"><h3>🏢 Demandes de compte entreprise</h3>${proReq.map((p) => `<div class="sum-row" data-pro="${p.user_id}"><span><b>${esc(p.company || "")}</b> · ${esc(p.full_name || p.email)} · ${esc(p.phone || "")}</span><span class="row-actions"><button class="btn btn-primary btn-sm" data-pro-ok>Valider</button><button class="btn btn-outline btn-sm" data-pro-no>Refuser</button></span></div>`).join("")}
+        <p class="hint" style="margin:8px 0 0">Un compte validé voit les « prix entreprise » que vous fixez dans chaque fiche produit.</p></div>` : ""}
       <p class="hint" style="margin-top:0">Les comptes clients servent uniquement à commander et suivre ses commandes. Votre compte personnel (administrateur) n'apparaît pas dans cette liste.</p>
       <div class="toolbar-admin"><input type="search" id="c-q" placeholder="Rechercher un nom, un téléphone, un email…"></div>
       <div class="table-wrap" id="clients-table"></div>`;
+    $$("[data-pro]").forEach((row) => ["ok", "no"].forEach((k) => $(`[data-pro-${k}]`, row).addEventListener("click", async () => {
+      const { error: e } = await sb.from("customer_profiles").update({ pro_status: k === "ok" ? "valide" : "refuse" }).eq("user_id", row.dataset.pro);
+      if (e) return fail(e);
+      toast(k === "ok" ? "Compte entreprise validé ✓" : "Demande refusée"); renderTab();
+    })));
     const draw = () => {
       const q = $("#c-q").value.trim().toLowerCase();
       const list = customers.filter((p) => !q || `${p.full_name} ${p.phone} ${p.email}`.toLowerCase().includes(q));
@@ -1407,9 +1658,14 @@
       cols: [
         { f: "code", label: "Code", type: "text", lockExisting: true, upper: true, placeholder: "ex. NOEL15" },
         { f: "percent", label: "Réduction (%)", type: "number" },
+        { f: "expires_at", label: "Valable jusqu'au", type: "date", nullable: true },
+        { f: "max_uses", label: "Utilisations max", type: "number", nullable: true, placeholder: "illimité" },
+        { f: "uses", label: "Utilisé", type: "number", readonly: true },
+        { f: "min_amount", label: "Panier minimum (GNF)", type: "number" },
+        { f: "product_id", label: "Produit seulement", type: "text", nullable: true, placeholder: "tous les produits" },
         { f: "active", label: "Actif", type: "checkbox" }
       ],
-      blank: () => ({ code: "", percent: 10, active: true })
+      blank: () => ({ code: "", percent: 10, active: true, expires_at: null, max_uses: null, uses: 0, min_amount: 0, product_id: null })
     }
   };
 
@@ -1417,7 +1673,7 @@
     const locked = col.lockExisting && !isNew;
     if (col.type === "checkbox") return `<label class="check"><input type="checkbox" data-f="${col.f}" ${value ? "checked" : ""}></label>`;
     if (col.type === "select") return `<select data-f="${col.f}">${col.options.map((o) => `<option ${o === value ? "selected" : ""}>${o}</option>`).join("")}</select>`;
-    if (locked) return `<b>${esc(value)}</b>`;
+    if (locked || col.readonly) return `<b>${esc(value ?? "")}</b>`;
     return `<input type="${col.type}" data-f="${col.f}" value="${esc(value ?? "")}" placeholder="${esc(col.placeholder || "")}">`;
   }
 
@@ -1442,7 +1698,8 @@
           cfg.cols.forEach((c) => {
             const el = $(`[data-f="${c.f}"]`, tr);
             if (!el) { row[c.f] = r[c.f]; return; }
-            let v = c.type === "checkbox" ? el.checked : c.type === "number" ? Number(el.value) || 0 : el.value.trim();
+            let v = c.type === "checkbox" ? el.checked : c.type === "number" ? (c.nullable && el.value === "" ? null : Number(el.value) || 0) : el.value.trim();
+            if (c.nullable && v === "") v = null;
             if (c.upper) v = v.toUpperCase().replace(/\s+/g, "");
             if (c.lockExisting && c.type === "text" && !c.upper) v = slug(v);
             row[c.f] = v;
@@ -1490,6 +1747,11 @@
         </form>
         <p class="hint" style="margin-bottom:0">Mettez 0 pour désactiver. Ne s'applique qu'aux zones cochées « Livr. gratuite possible ».</p>
       </div>
+      <div class="box" style="margin-bottom:16px">
+        <h3>⭐ Lien de votre fiche Google (avis)</h3>
+        <form id="greview-form" class="toolbar-admin" style="margin:0"><input id="greview" type="url" placeholder="https://g.page/r/…/review" value="${esc(S.googleReviewUrl || "")}" style="flex:1;min-width:220px"><button class="btn btn-primary btn-sm">Enregistrer</button></form>
+        <p class="hint" style="margin-bottom:0">Ajouté automatiquement au message WhatsApp « Livrée » pour demander un avis Google à vos clients. Trouvez-le dans Google Business › « Demander des avis ».</p>
+      </div>
       <h3>Zones et tarifs</h3>
       <div id="crud"></div>`;
     $("#free-form").addEventListener("submit", async (e) => {
@@ -1498,6 +1760,14 @@
       const { error } = await sb.from("shop_settings").upsert({ key: "free_delivery_from", value });
       if (error) return fail(error);
       toast(value ? `Livraison gratuite dès ${money(value)}` : "Livraison gratuite désactivée");
+    });
+    $("#greview-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const v = $("#greview").value.trim();
+      if (v && !/^https:\/\//.test(v)) return toast("Le lien doit commencer par https://", true);
+      const { error } = await sb.from("shop_settings").upsert({ key: "google_review_url", value: v });
+      if (error) return fail(error);
+      S.googleReviewUrl = v; toast(v ? "Lien d'avis Google enregistré ✓" : "Lien retiré");
     });
     await crudSection($("#crud"), CRUD.zones);
   }
