@@ -192,3 +192,12 @@ table.data input[type=text], table.data input[type=number], table.data select { 
 /* ---------- Livreurs, cadeaux ---------- */
 [data-assign] select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
 .form-grid .field label { font-size: 13px; }
+
+/* ---------- Menu de gauche : défile s'il y a beaucoup d'onglets (fond bleu jusqu'en bas) ---------- */
+@media (min-width: 761px) {
+  .side { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(199,210,254,.35) transparent; }
+  .side::-webkit-scrollbar { width: 6px; }
+  .side::-webkit-scrollbar-thumb { background: rgba(199,210,254,.35); border-radius: 6px; }
+  .side a, .side button { padding: 8px 12px; flex: none; }
+  .side .spacer { flex: 1 0 12px; }
+}
